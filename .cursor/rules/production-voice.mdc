@@ -1,0 +1,16 @@
+---
+description: Production voice for the United Pension Trustees operations hub
+alwaysApply: true
+---
+
+# Production voice
+
+Present the hub as a working product. Copy describes the work an officer can do.
+
+- Use operational language: what the screen is for, and the action it offers.
+- Never call the product a demo, prototype, placeholder, walkthrough, sample, mock, or illustrative set of figures.
+- Never say data stays on the device, in the browser, or in the session.
+- Never say a scheme, screen, or feature is not ready, not open, coming later, or still on the client side.
+- Never narrate the old process inside the product (Excel, email chains, separate tools).
+- Empty lists use an icon, a short title, one line of guidance, and a button for that screen's primary action.
+- Input placeholders are field hints only, never commentary about the build.
