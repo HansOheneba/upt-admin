@@ -75,15 +75,8 @@ export function MonitoringBoard() {
   return (
     <div>
       <PageHeader
-        title="Monitoring"
-        description="The same records as the queues, for the period you choose."
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => exportMembers(book, members)}>Member list</Button>
-            <Button variant="secondary" onClick={() => exportContributions(book, range)}>Contribution ledger</Button>
-            <Button variant="secondary" onClick={() => exportWithdrawals(book, range)}>Withdrawal register</Button>
-          </div>
-        }
+        title="Fund overview"
+        description="Scheme position for My Own Pension. Figures use the records on file for the period you choose."
       />
       <div className="mb-4 flex flex-wrap items-end gap-2">
         {(["month", "quarter", "custom"] as const).map((item) => (
@@ -108,23 +101,34 @@ export function MonitoringBoard() {
       </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard label="Active members" value={String(active.length)} hint={`${joined.length} joined in the period`} />
-        <StatCard label="Contributions" value={String(posted.length)} hint={`${ghs(amount)} · ${formatUnits(units)} units`} />
+        <StatCard label="Contributions in period" value={ghs(amount)} hint={`${posted.length} posted · ${formatUnits(units)} units allocated`} />
         <StatCard label="Missed contribution" value={String(missed.length)} hint="Nothing received in a month of this period" />
-        <StatCard label="Amount waiting" value={ghs(waitingAmount)} hint="Received, under review, or approved" />
-        <StatCard label="Amount paid" value={ghs(paidAmount)} hint={`${paid.length} completed in the period`} />
-        <StatCard label="Received to paid" value={averageDays === null ? "—" : `${averageDays} days`} hint="Average for payments in the period" />
+        <StatCard label="Withdrawals waiting" value={ghs(waitingAmount)} hint="Received, under review, or approved. Not yet paid." />
+        <StatCard label="Withdrawals paid" value={ghs(paidAmount)} hint={`${paid.length} completed in the period`} />
+        <StatCard label="Received to paid" value={averageDays === null ? "—" : `${averageDays} days`} hint="Average for payments completed in the period" />
         <StatCard label="Open requests" value={String(openRequests.length)} hint={`${stale.length} older than two days`} />
         <StatCard
           label="Unit price"
           value={price ? price.price.toFixed(3) : "Not set"}
-          hint={price ? `Set ${formatDate(price.date)}` : "Pots are unavailable"}
+          hint={price ? `Valuation price set ${formatDate(price.date)}` : "Pension value is unavailable"}
         />
         <StatCard
-          label="Units in issue"
-          value={formatUnits(unitsIssued)}
-          hint={pot === null ? "Pot unavailable" : `Pot ${ghs(pot)}`}
+          label="Pension value"
+          value={pot === null ? "Unavailable" : ghs(pot)}
+          hint={`${formatUnits(unitsIssued)} units in issue × current unit price`}
         />
       </div>
+      <section id="reports" className="mt-6 rounded-[12px] border border-line bg-card px-5 py-4">
+        <h2 className="text-base font-semibold text-navy">Reports</h2>
+        <p className="mt-1 text-[13px] text-muted">
+          Exports use the same records as the figures above, for {formatDate(range.from)} to {formatDate(range.to)}.
+        </p>
+        <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <ReportCard title="Member reports" text="Member list with pension value and units." onExport={() => exportMembers(book, members)} />
+          <ReportCard title="Contribution reports" text="Contribution ledger for the selected period." onExport={() => exportContributions(book, range)} />
+          <ReportCard title="Withdrawal reports" text="Withdrawal register for submissions in the period." onExport={() => exportWithdrawals(book, range)} />
+        </div>
+      </section>
       <ul className="mt-4 text-sm text-muted">
         {(["received", "checking", "approved", "paid", "declined"] as WithdrawalStatus[]).map((status) => (
           <li key={status}>
@@ -134,6 +138,26 @@ export function MonitoringBoard() {
         ))}
       </ul>
     </div>
+  );
+}
+
+function ReportCard({
+  title,
+  text,
+  onExport,
+}: {
+  title: string;
+  text: string;
+  onExport: () => void;
+}) {
+  return (
+    <article className="rounded-[10px] border border-line p-4">
+      <h3 className="text-sm font-medium text-navy">{title}</h3>
+      <p className="mt-1 text-[13px] leading-5 text-muted">{text}</p>
+      <Button variant="secondary" className="mt-3" onClick={onExport}>
+        Export
+      </Button>
+    </article>
   );
 }
 

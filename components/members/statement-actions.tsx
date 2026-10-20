@@ -11,7 +11,7 @@ export function StatementActions({ member }: { member: Member }) {
   const { book } = useRecords();
 
   return (
-    <div className="print-hide flex gap-2">
+    <div className="print-hide flex flex-col gap-2">
       <Button
         variant="secondary"
         onClick={() => {

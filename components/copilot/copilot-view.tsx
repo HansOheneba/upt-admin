@@ -379,7 +379,7 @@ export function CopilotView() {
           {isEmpty ? (
             <div className="mx-auto flex w-full max-w-3xl flex-col px-4 pt-12 pb-8">
               <div className="flex items-start gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-navy text-gold">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-navy text-white">
                   <Brain className="size-5" aria-hidden />
                 </span>
                 <div>

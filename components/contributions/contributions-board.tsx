@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { CircleDollarSign } from "lucide-react";
 
 import { useRecords } from "@/components/records/records-provider";
@@ -9,10 +10,12 @@ import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
 import { controlClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { downloadCsv } from "@/lib/csv";
 import { memberName } from "@/lib/domain";
 import { formatDate, formatUnits, ghs, todayIso } from "@/lib/format";
-import { channelLabel, currentMonth, inRange, periodStart } from "@/lib/pension";
+import { channelLabel, contributionMonthStatus, currentMonth, inRange, periodStart } from "@/lib/pension";
 
 export function ContributionsBoard() {
   const { book, members, postPayment, canFinance } = useRecords();
@@ -27,12 +30,24 @@ export function ContributionsBoard() {
         .sort((a, b) => b.date.localeCompare(a.date)),
     [book.contributions, from, to],
   );
+  const month = currentMonth();
+  const postedAmount = posted.reduce((sum, row) => sum + row.amount, 0);
+  const exceptions = members
+    .map((member) => {
+      const status = contributionMonthStatus(member, book.contributions, month);
+      if (status !== "missing" && status !== "partial") return null;
+      const received = book.contributions
+        .filter((row) => row.memberId === member.id && row.date.startsWith(month))
+        .reduce((sum, row) => sum + row.amount, 0);
+      return { member, status, received };
+    })
+    .filter((row): row is NonNullable<typeof row> => !!row);
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Contributions"
-        description="Match a Mobile Money payment to a member, then post it at the unit price for that day."
+        description="Monitor received contributions and investigate payment exceptions."
         action={
           <Button
             variant="secondary"
@@ -71,9 +86,17 @@ export function ContributionsBoard() {
         <Button variant="secondary" onClick={() => { setFrom(todayIso()); setTo(todayIso()); }}>Today</Button>
         <Button variant="secondary" onClick={() => { setFrom(`${currentMonth()}-01`); setTo(todayIso()); }}>This month</Button>
       </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard label="Posted in this period" value={String(posted.length)} hint={ghs(postedAmount)} />
+        <StatCard label="Pending reconciliation" value={String(book.payments.length)} hint="Mobile Money not yet posted to a member" />
+        <StatCard label="Exceptions this month" value={String(exceptions.length)} hint="Missing or short of the monthly contribution" />
+      </div>
 
-      <section>
-        <h2 className="mb-3 text-sm font-medium text-navy">Not yet on a member</h2>
+      <section id="reconciliation">
+        <h2 className="text-base font-semibold text-navy">Pending reconciliation</h2>
+        <p className="mt-1 mb-3 text-[13px] text-muted">
+          These payments are received and not yet posted. They are not missing contributions.
+        </p>
         {book.payments.length === 0 ? (
           <EmptyState
             icon={CircleDollarSign}
@@ -133,7 +156,43 @@ export function ContributionsBoard() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-medium text-navy">Posted in this period</h2>
+        <h2 className="text-base font-semibold text-navy">Contribution exceptions</h2>
+        <p className="mt-1 mb-3 text-[13px] text-muted">
+          Expected monthly contributions for the current month with nothing posted, or a short payment. No contribution record is created from the expected amount.
+        </p>
+        {exceptions.length === 0 ? (
+          <p className="text-sm text-muted">No missing or short contributions this month.</p>
+        ) : (
+          <DataTable
+            columns={[
+              { key: "member", header: "Member" },
+              { key: "expected", header: "Expected", className: "text-right" },
+              { key: "received", header: "Received", className: "text-right" },
+              { key: "difference", header: "Outstanding", className: "text-right" },
+              { key: "period", header: "Period" },
+              { key: "status", header: "Status" },
+            ]}
+            rows={exceptions.map(({ member, status, received }) => ({
+              id: member.id,
+              cells: {
+                member: (
+                  <Link href={`/members/${member.id}`} className="font-medium text-navy hover:underline">
+                    {memberName(member)}
+                  </Link>
+                ),
+                expected: ghs(member.monthlyContribution),
+                received: ghs(received),
+                difference: ghs(Math.max(0, Math.round((member.monthlyContribution - received) * 100) / 100)),
+                period: month,
+                status: <StatusBadge label={status === "missing" ? "Missing" : "Partial"} />,
+              },
+            }))}
+          />
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-base font-semibold text-navy">Posted in this period</h2>
         {posted.length === 0 ? (
           <p className="text-sm text-muted">Nothing posted between these dates.</p>
         ) : (

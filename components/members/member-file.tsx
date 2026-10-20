@@ -5,11 +5,12 @@ import { useState, type ReactNode } from "react";
 
 import { useRecords } from "@/components/records/records-provider";
 import { StatementActions } from "@/components/members/statement-actions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonClass } from "@/components/ui/button";
 import { controlClass } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { Section } from "@/components/ui/section";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { TabList } from "@/components/ui/tabs";
 import {
   DOCUMENT_TAGS,
   REQUEST_CHANNEL_LABEL,
@@ -35,6 +36,11 @@ export function MemberFile({ id }: { id: string }) {
   const [editing, setEditing] = useState(false);
   const [contributing, setContributing] = useState(false);
   const [sessionOpen, setSessionOpen] = useState(false);
+  const [tab, setTab] = useState("overview");
+
+  if (!records.ready) {
+    return <div className="min-h-[50vh]" />;
+  }
 
   if (!member) {
     return (
@@ -51,31 +57,41 @@ export function MemberFile({ id }: { id: string }) {
   const monthStatus = contributionMonthStatus(member, records.book.contributions, currentMonth());
   const staffName = (staffId: string | null) =>
     records.book.staff.find((person) => person.id === staffId)?.name ?? "Staff";
+  const manager = records.book.staff.find((person) => person.id === member.relationshipManagerId);
+  const openRequests = records.book.requests.filter(
+    (row) => row.memberId === member.id && row.status === "open",
+  ).length;
+  const policies = records.book.insurance.filter((row) => row.memberId === member.id);
+  const flags = policies
+    .map((row) => ({ row, flag: insuranceFlag(row.renewalDate, row.active) }))
+    .filter((item) => item.flag);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-start justify-between gap-4">
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs text-muted">
-            <Link href="/members" className="hover:text-navy">Members</Link>
-            {" · "}
-            {member.memberNumber}
-          </p>
-          <h1 className="mt-1 text-xl font-medium text-navy">{memberName(member)}</h1>
+          <h1 className="text-[28px] leading-tight font-semibold text-navy">{memberName(member)}</h1>
           <p className="mt-1 text-sm text-muted">
-            {member.scheme} · {member.location} · {member.status === "active" ? "Active" : "Closed"}
+            {member.memberNumber} · {member.scheme} · {manager?.name ?? "No relationship manager"}
           </p>
+          <div className="mt-2">
+            <StatusBadge label={member.status === "active" ? "Active" : "Closed"} />
+          </div>
         </div>
-        <StatementActions member={member} />
-      </div>
-
-      <Section
-        title="Identity"
-        action={
-          records.canCorrect ? (
-            <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setEditing(true)}>Correct</Button>
-              {member.status === "active" ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {records.canCorrect ? (
+            <Button onClick={() => setEditing(true)}>Correct member</Button>
+          ) : records.canFinance ? (
+            <Button onClick={() => setContributing(true)}>Add contribution</Button>
+          ) : null}
+          <details className="relative">
+            <summary className={`${buttonClass("secondary")} cursor-pointer list-none`}>Actions</summary>
+            <div className="absolute right-0 z-20 mt-2 flex w-52 flex-col gap-2 rounded-[10px] border border-line bg-card p-2 shadow-sm">
+              {records.canCorrect && records.canFinance ? (
+                <Button variant="secondary" onClick={() => setContributing(true)}>Add contribution</Button>
+              ) : null}
+              <StatementActions member={member} />
+              {records.canCorrect && member.status === "active" ? (
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -88,9 +104,54 @@ export function MemberFile({ id }: { id: string }) {
                 </Button>
               ) : null}
             </div>
-          ) : null
-        }
-      >
+          </details>
+        </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Summary
+          label="Current pension value"
+          value={position.pot === null ? "Unavailable" : ghs(position.pot)}
+          hint={
+            position.price
+              ? `Units × unit price ${position.price.price.toFixed(3)} on ${formatDate(position.price.date)}`
+              : "No unit price is set"
+          }
+        />
+        <Summary label="Units held" value={formatUnits(position.units)} hint="Credited units less units taken on paid withdrawals" />
+        <Summary
+          label="Latest contribution"
+          value={position.latest ? ghs(position.latest.amount) : "None"}
+          hint={position.latest ? formatDate(position.latest.date) : "No contribution posted"}
+        />
+        <Summary
+          label="Open items"
+          value={String((position.openWithdrawal ? 1 : 0) + openRequests)}
+          hint={
+            position.openWithdrawal
+              ? `Withdrawal ${WITHDRAWAL_LABEL[position.openWithdrawal.status]}${openRequests ? ` · ${openRequests} open request${openRequests === 1 ? "" : "s"}` : ""}`
+              : openRequests
+                ? `${openRequests} open request${openRequests === 1 ? "" : "s"}`
+                : "No open withdrawal or request"
+          }
+        />
+      </div>
+
+      <TabList
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { id: "overview", label: "Overview" },
+          { id: "contributions", label: "Contributions" },
+          { id: "withdrawals", label: "Withdrawals & Claims" },
+          { id: "beneficiaries", label: "Beneficiaries" },
+          { id: "documents", label: "Documents" },
+          { id: "activity", label: "Activity & Communications" },
+        ]}
+      />
+
+      {tab === "overview" ? (
+      <Section title="Personal and membership">
         <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Fact label="First name" value={member.firstName} />
           <Fact label="Last name" value={member.lastName} />
@@ -110,7 +171,9 @@ export function MemberFile({ id }: { id: string }) {
           <Fact label="Account" value={member.status === "active" ? "Active" : "Closed"} />
         </dl>
       </Section>
+      ) : null}
 
+      {tab === "overview" ? (
       <Section title="Pension">
         <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <Fact label="Pot value" value={position.pot === null ? "Unavailable" : ghs(position.pot)} />
@@ -150,7 +213,28 @@ export function MemberFile({ id }: { id: string }) {
           />
         </dl>
       </Section>
+      ) : null}
 
+      {tab === "overview" && (monthStatus === "missing" || monthStatus === "partial" || position.openWithdrawal || flags.length > 0) ? (
+        <Section title="Items requiring attention">
+          <ul className="flex flex-col gap-2 text-sm">
+            {monthStatus === "missing" ? <li>No contribution posted for {currentMonth()}.</li> : null}
+            {monthStatus === "partial" ? (
+              <li>This month&apos;s contribution is short of {ghs(member.monthlyContribution)}.</li>
+            ) : null}
+            {position.openWithdrawal ? (
+              <li>
+                Withdrawal of {ghs(position.openWithdrawal.amount)} is {WITHDRAWAL_LABEL[position.openWithdrawal.status]}.
+              </li>
+            ) : null}
+            {flags.map(({ row, flag }) => (
+              <li key={row.id}>{flag}: {row.policyName}, renewal {formatDate(row.renewalDate)}.</li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+
+      {tab === "contributions" ? (
       <Section
         title="Contributions"
         action={
@@ -186,7 +270,9 @@ export function MemberFile({ id }: { id: string }) {
           ])}
         />
       </Section>
+      ) : null}
 
+      {tab === "withdrawals" ? (
       <Section title="Withdrawals">
         {position.withdrawals.length === 0 ? (
           <p className="text-sm text-muted">No withdrawals on this file.</p>
@@ -228,7 +314,35 @@ export function MemberFile({ id }: { id: string }) {
           </div>
         )}
       </Section>
+      ) : null}
 
+      {tab === "beneficiaries" ? (
+        <Section
+          title="Beneficiaries"
+          description="Next of kin on the membership record, and beneficiaries named on policies."
+        >
+          <dl className="grid gap-3 sm:grid-cols-2">
+            <Fact label="Next of kin" value={member.nextOfKin || "Not stated"} />
+            <Fact label="Next of kin contact" value={member.nextOfKinContact || "Not stated"} />
+          </dl>
+          <div className="mt-4">
+            {policies.length === 0 ? (
+              <p className="text-sm text-muted">No policy beneficiary on this file.</p>
+            ) : (
+              <ul className="flex flex-col gap-2 text-sm">
+                {policies.map((row) => (
+                  <li key={row.id}>
+                    <span className="font-medium text-navy">{row.beneficiary || "Not stated"}</span>
+                    <span className="text-muted"> · {row.policyName} · {row.provider}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </Section>
+      ) : null}
+
+      {tab === "activity" ? (
       <Section title="Requests">
         {records.book.requests.filter((row) => row.memberId === member.id).length === 0 ? (
           <p className="text-sm text-muted">No requests on this file.</p>
@@ -256,16 +370,29 @@ export function MemberFile({ id }: { id: string }) {
           </ul>
         )}
       </Section>
+      ) : null}
 
-      <Planning memberId={member.id} canValue={records.canAdviseMember(member)} />
+      {tab === "overview" ? <Planning memberId={member.id} canValue={records.canAdviseMember(member)} /> : null}
+      {tab === "overview" ? (
+        <Relationship member={member} sessionOpen={sessionOpen} setSessionOpen={setSessionOpen} include={["appointments"]} />
+      ) : null}
+      {tab === "documents" ? (
+        <Relationship member={member} sessionOpen={sessionOpen} setSessionOpen={setSessionOpen} include={["documents"]} />
+      ) : null}
+      {tab === "activity" ? (
+        <Relationship
+          member={member}
+          sessionOpen={sessionOpen}
+          setSessionOpen={setSessionOpen}
+          include={["sessions", "tasks", "messages"]}
+        />
+      ) : null}
 
-      <Section title="Relationship">
-        <Relationship member={member} sessionOpen={sessionOpen} setSessionOpen={setSessionOpen} />
-      </Section>
-
+      {tab === "activity" ? (
       <Section title="History on this member">
         <AuditList memberId={member.id} />
       </Section>
+      ) : null}
 
       <EditIdentity
         open={editing}
@@ -447,10 +574,12 @@ function Relationship({
   member,
   sessionOpen,
   setSessionOpen,
+  include,
 }: {
   member: Member;
   sessionOpen: boolean;
   setSessionOpen: (open: boolean) => void;
+  include: Array<"appointments" | "sessions" | "tasks" | "messages" | "documents">;
 }) {
   const records = useRecords();
   const appointments = records.book.appointments.filter((row) => row.memberId === member.id);
@@ -460,9 +589,11 @@ function Relationship({
   const documents = records.book.documents.filter((row) => row.memberId === member.id);
   const advise = records.canAdviseMember(member);
   const today = todayIso();
+  const show = (key: (typeof include)[number]) => include.includes(key);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 rounded-[12px] border border-line bg-card px-5 py-4">
+      {show("appointments") ? (
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-medium text-navy">Appointments</h3>
@@ -484,6 +615,8 @@ function Relationship({
           </ul>
         )}
       </div>
+      ) : null}
+      {show("sessions") ? (
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-medium text-navy">Sessions</h3>
@@ -499,6 +632,8 @@ function Relationship({
           </article>
         ))}
       </div>
+      ) : null}
+      {show("tasks") ? (
       <div>
         <h3 className="mb-2 text-sm font-medium text-navy">Tasks</h3>
         {tasks.length === 0 ? <p className="text-sm text-muted">No tasks.</p> : (
@@ -518,6 +653,8 @@ function Relationship({
           </ul>
         )}
       </div>
+      ) : null}
+      {show("messages") ? (
       <div>
         <h3 className="mb-2 text-sm font-medium text-navy">Messages</h3>
         {messages.length === 0 ? <p className="text-sm text-muted">No messages.</p> : messages.map((row) => (
@@ -541,6 +678,8 @@ function Relationship({
           </form>
         ) : null}
       </div>
+      ) : null}
+      {show("documents") ? (
       <div>
         <h3 className="mb-2 text-sm font-medium text-navy">Documents</h3>
         {documents.length === 0 ? <p className="text-sm text-muted">No documents.</p> : (
@@ -582,6 +721,8 @@ function Relationship({
           </form>
         ) : null}
       </div>
+      ) : null}
+      {show("sessions") ? (
       <Modal open={sessionOpen} title="Log session" onClose={() => setSessionOpen(false)}>
         <form
           className="grid gap-3"
@@ -614,6 +755,7 @@ function Relationship({
           <Button type="submit">Publish session</Button>
         </form>
       </Modal>
+      ) : null}
     </div>
   );
 }
@@ -693,6 +835,16 @@ function EditIdentity({
         <Button type="submit">Save correction</Button>
       </form>
     </Modal>
+  );
+}
+
+function Summary({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <article className="rounded-[12px] border border-line bg-card px-5 py-4">
+      <p className="text-[13px] font-medium text-muted">{label}</p>
+      <p className="mt-2 text-[26px] leading-none font-semibold text-navy tabular-nums">{value}</p>
+      <p className="mt-2 text-xs leading-5 text-muted">{hint}</p>
+    </article>
   );
 }
 

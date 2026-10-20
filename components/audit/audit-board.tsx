@@ -1,24 +1,40 @@
 "use client";
 
+import { useState } from "react";
 import { ScrollText } from "lucide-react";
 
 import { useRecords } from "@/components/records/records-provider";
 import { DataTable } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/empty-state";
+import { controlClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { memberName } from "@/lib/domain";
 import { formatDateTime } from "@/lib/format";
 
 export function AuditBoard() {
   const { book } = useRecords();
+  const [query, setQuery] = useState("");
+  const needle = query.trim().toLowerCase();
+  const rows = book.audit.filter((entry) => {
+    if (!needle) return true;
+    const member = book.members.find((item) => item.id === entry.memberId);
+    const haystack = `${entry.staffName} ${entry.action} ${entry.field} ${entry.summary} ${entry.previousValue} ${entry.newValue} ${member ? memberName(member) : ""}`.toLowerCase();
+    return haystack.includes(needle);
+  });
 
   return (
     <div>
       <PageHeader
-        title="Audit"
-        description="Who changed a record, when, and what the previous value was. Members do not see this log."
+        title="Audit log"
+        description="Who changed a record, when, and what the previous value was. This log cannot be edited here."
       />
-      {book.audit.length === 0 ? (
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder="Search actor, action, or record"
+        className={`${controlClass} mb-4`}
+      />
+      {rows.length === 0 ? (
         <EmptyState
           icon={ScrollText}
           title="No staff actions yet"
@@ -34,7 +50,7 @@ export function AuditBoard() {
             { key: "previous", header: "Previous" },
             { key: "next", header: "New" },
           ]}
-          rows={book.audit.map((entry) => {
+          rows={rows.map((entry) => {
             const member = book.members.find((item) => item.id === entry.memberId);
             return {
               id: entry.id,

@@ -3,12 +3,14 @@ import {
   Brain,
   CalendarClock,
   CircleDollarSign,
+  ClipboardCheck,
   ClipboardList,
   FileText,
   LayoutDashboard,
   LifeBuoy,
   LineChart,
   MessagesSquare,
+  Scale,
   ScrollText,
   Users,
   Wallet,
@@ -25,107 +27,171 @@ export type NavItem = {
   area: NavArea;
 };
 
-export const NAV_ITEMS: NavItem[] = [
+export type NavGroup = {
+  id: string;
+  label: string;
+  items: NavItem[];
+};
+
+export const NAV_GROUPS: NavGroup[] = [
   {
-    href: "/operations",
-    label: "Home",
-    description: "Work waiting",
-    icon: LayoutDashboard,
-    area: "home",
+    id: "workspace",
+    label: "Workspace",
+    items: [
+      {
+        href: "/operations",
+        label: "Home",
+        description: "Workload and follow-up",
+        icon: LayoutDashboard,
+        area: "home",
+      },
+      {
+        href: "/tasks",
+        label: "My Tasks",
+        description: "Follow-ups",
+        icon: ClipboardList,
+        area: "tasks",
+      },
+      {
+        href: "/appointments",
+        label: "Appointments",
+        description: "Meetings",
+        icon: CalendarClock,
+        area: "appointments",
+      },
+      {
+        href: "/approvals",
+        label: "Approvals",
+        description: "Decisions waiting on your role",
+        icon: ClipboardCheck,
+        area: "withdrawals",
+      },
+      {
+        href: "/copilot",
+        label: "Copilot",
+        description: "Questions on the book",
+        icon: Brain,
+        area: "copilot",
+      },
+    ],
   },
   {
-    href: "/members",
+    id: "members",
     label: "Members",
-    description: "Member records",
-    icon: Users,
-    area: "members",
+    items: [
+      {
+        href: "/members",
+        label: "Member Directory",
+        description: "Member records",
+        icon: Users,
+        area: "members",
+      },
+      {
+        href: "/documents",
+        label: "Documents",
+        description: "Files on a member",
+        icon: FileText,
+        area: "documents",
+      },
+      {
+        href: "/messages",
+        label: "Messages",
+        description: "Notes with members",
+        icon: MessagesSquare,
+        area: "messages",
+      },
+      {
+        href: "/requests",
+        label: "Member Requests",
+        description: "Messages from members",
+        icon: LifeBuoy,
+        area: "requests",
+      },
+    ],
   },
   {
-    href: "/withdrawals",
-    label: "Withdrawals",
-    description: "Received through payment",
-    icon: Wallet,
-    area: "withdrawals",
+    id: "pension",
+    label: "Pension operations",
+    items: [
+      {
+        href: "/contributions",
+        label: "Contributions",
+        description: "Posted contributions",
+        icon: CircleDollarSign,
+        area: "contributions",
+      },
+      {
+        href: "/contributions#reconciliation",
+        label: "Reconciliation",
+        description: "Payments not yet on a member",
+        icon: Scale,
+        area: "contributions",
+      },
+      {
+        href: "/withdrawals",
+        label: "Withdrawals & Claims",
+        description: "Requests through payment",
+        icon: Wallet,
+        area: "withdrawals",
+      },
+    ],
   },
   {
-    href: "/contributions",
-    label: "Contributions",
-    description: "Mobile Money to post",
-    icon: CircleDollarSign,
-    area: "contributions",
+    id: "funds",
+    label: "Funds & reports",
+    items: [
+      {
+        href: "/monitoring",
+        label: "Fund Overview",
+        description: "Scheme position for the period",
+        icon: LineChart,
+        area: "monitoring",
+      },
+      {
+        href: "/monitoring#reports",
+        label: "Reports",
+        description: "Exports from the book",
+        icon: FileText,
+        area: "monitoring",
+      },
+    ],
   },
   {
-    href: "/unit-price",
-    label: "Unit price",
-    description: "Price and history",
-    icon: BadgeCheck,
-    area: "unitPrice",
-  },
-  {
-    href: "/requests",
-    label: "Requests",
-    description: "Messages from members",
-    icon: LifeBuoy,
-    area: "requests",
-  },
-  {
-    href: "/appointments",
-    label: "Appointments",
-    description: "Meetings",
-    icon: CalendarClock,
-    area: "appointments",
-  },
-  {
-    href: "/tasks",
-    label: "Tasks",
-    description: "Follow-ups",
-    icon: ClipboardList,
-    area: "tasks",
-  },
-  {
-    href: "/messages",
-    label: "Messages",
-    description: "Unanswered notes",
-    icon: MessagesSquare,
-    area: "messages",
-  },
-  {
-    href: "/documents",
-    label: "Documents",
-    description: "Files on a member",
-    icon: FileText,
-    area: "documents",
-  },
-  {
-    href: "/monitoring",
-    label: "Monitoring",
-    description: "The book for a period",
-    icon: LineChart,
-    area: "monitoring",
-  },
-  {
-    href: "/audit",
-    label: "Audit",
-    description: "Who changed what",
-    icon: ScrollText,
-    area: "audit",
-  },
-  {
-    href: "/staff",
-    label: "Staff",
-    description: "Access",
-    icon: Users,
-    area: "staff",
-  },
-  {
-    href: "/copilot",
-    label: "Copilot",
-    description: "Questions on the book",
-    icon: Brain,
-    area: "copilot",
+    id: "admin",
+    label: "Administration",
+    items: [
+      {
+        href: "/unit-price",
+        label: "Fund Settings",
+        description: "Unit price",
+        icon: BadgeCheck,
+        area: "unitPrice",
+      },
+      {
+        href: "/staff",
+        label: "Users & Permissions",
+        description: "Access",
+        icon: Users,
+        area: "staff",
+      },
+      {
+        href: "/audit",
+        label: "Audit Log",
+        description: "Who changed what",
+        icon: ScrollText,
+        area: "audit",
+      },
+    ],
   },
 ];
 
-export function isActiveRoute(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
+const HASH_OWNERS = ["/contributions", "/monitoring"];
+
+export function isActiveRoute(pathname: string, href: string, hash = "") {
+  const [path, fragment] = href.split("#");
+  const matchesPath = pathname === path || pathname.startsWith(`${path}/`);
+  if (!matchesPath) return false;
+  if (fragment) return pathname === path && hash === `#${fragment}`;
+  if (HASH_OWNERS.includes(path) && hash.length > 1) return false;
+  return true;
 }

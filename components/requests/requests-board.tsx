@@ -31,7 +31,7 @@ export function RequestsBoard() {
   return (
     <div>
       <PageHeader
-        title="Requests"
+        title="Member requests"
         description="Reply once. The member sees it in the app, and the same reply goes by SMS and email."
         action={
           <Button variant="secondary" onClick={() => setOpenOnly((value) => !value)}>

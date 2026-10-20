@@ -16,45 +16,47 @@ import { WITHDRAWAL_LABEL, memberName, type WithdrawalStatus } from "@/lib/domai
 import { daysSince, formatDate, formatDateTime, formatUnits, ghs, todayIso } from "@/lib/format";
 import { destinationLabel, memberPosition } from "@/lib/pension";
 
-const STAGES: WithdrawalStatus[] = ["received", "checking", "approved", "paid", "declined"];
-
 export function WithdrawalsBoard() {
   const params = useSearchParams();
   const records = useRecords();
-  const [stage, setStage] = useState(params.get("stage") ?? "all");
+  const initialStage = params.get("stage") ?? "all";
+  const [stage, setStage] = useState(initialStage);
+  const [caseView, setCaseView] = useState<"open" | "completed" | "declined" | "all">(
+    initialStage === "all" ? "open" : "all",
+  );
   const [selected, setSelected] = useState<string | null>(params.get("id"));
   const visible = useMemo(
     () => new Set(records.members.map((member) => member.id)),
     [records.members],
   );
-  const rows = records.book.withdrawals.filter(
-    (row) => visible.has(row.memberId) && (stage === "all" || row.status === stage),
-  );
+  const rows = records.book.withdrawals.filter((row) => {
+    if (!visible.has(row.memberId)) return false;
+    if (stage !== "all") return row.status === stage;
+    if (caseView === "open") return row.status === "received" || row.status === "checking" || row.status === "approved";
+    if (caseView === "completed") return row.status === "paid";
+    if (caseView === "declined") return row.status === "declined";
+    return true;
+  });
   const current = rows.find((row) => row.id === selected) ?? null;
 
   return (
     <div>
       <PageHeader
-        title="Withdrawals"
-        description="Received, under review, approved, then payment. A withdrawal cannot skip a stage, and the approver cannot mark it paid."
+        title="Withdrawals & Claims"
+        description="Withdrawal requests from receipt through payment. Claims are recorded as withdrawals on the member file."
       />
       <div className="mb-4 flex flex-wrap gap-2">
-        <StageButton active={stage === "all"} onClick={() => setStage("all")} label="All" />
-        {STAGES.map((item) => (
-          <StageButton
-            key={item}
-            active={stage === item}
-            onClick={() => setStage(item)}
-            label={WITHDRAWAL_LABEL[item]}
-          />
-        ))}
+        <StageButton active={caseView === "open" && stage === "all"} onClick={() => { setCaseView("open"); setStage("all"); }} label="Withdrawal requests" />
+        <StageButton active={caseView === "completed" && stage === "all"} onClick={() => { setCaseView("completed"); setStage("all"); }} label="Completed" />
+        <StageButton active={caseView === "declined" && stage === "all"} onClick={() => { setCaseView("declined"); setStage("all"); }} label="Declined" />
+        <StageButton active={caseView === "all" && stage === "all"} onClick={() => { setCaseView("all"); setStage("all"); }} label="All" />
       </div>
       {rows.length === 0 ? (
         <EmptyState
           icon={Wallet}
           title="No withdrawals in this stage"
           description="Member submissions appear here as Received."
-          action={<Button onClick={() => setStage("all")}>Show all stages</Button>}
+          action={<Button onClick={() => { setStage("all"); setCaseView("all"); }}>Show all</Button>}
         />
       ) : (
         <DataTable

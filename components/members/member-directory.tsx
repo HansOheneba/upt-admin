@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Search, Users } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { useRecords } from "@/components/records/records-provider";
@@ -12,8 +12,9 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { controlClass } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
+import { Pagination } from "@/components/ui/pagination";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { memberName } from "@/lib/domain";
+import { memberName, seesAllMembers, type Book } from "@/lib/domain";
 import { formatDate, ghs } from "@/lib/format";
 import {
   contributionMonthStatus,
@@ -21,14 +22,15 @@ import {
   memberPosition,
   openRequest,
   openWithdrawal,
-  overdueTasks,
 } from "@/lib/pension";
 
 export function MemberDirectory() {
   const params = useSearchParams();
-  const { book, members, canRegister, registerMember } = useRecords();
+  const { book, members, canRegister, registerMember, staff } = useRecords();
   const [query, setQuery] = useState("");
-  const [location, setLocation] = useState("all");
+  const [status, setStatus] = useState("all");
+  const [scheme, setScheme] = useState("all");
+  const [manager, setManager] = useState("all");
   const [contribution, setContribution] = useState(params.get("contribution") ?? "all");
   const [openOnly, setOpenOnly] = useState({
     withdrawal: params.get("withdrawal") === "open",
@@ -36,8 +38,13 @@ export function MemberDirectory() {
     joined: params.get("joined") === "month",
   });
   const [registering, setRegistering] = useState(false);
+  const [page, setPage] = useState(1);
   const month = currentMonth();
-  const locations = [...new Set(members.map((member) => member.location))].sort();
+  const schemes = [...new Set(members.map((member) => member.scheme))].sort();
+  const managers = book.staff.filter((person) =>
+    members.some((member) => member.relationshipManagerId === person.id),
+  );
+  const showManagers = !!staff && seesAllMembers(staff);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -45,51 +52,81 @@ export function MemberDirectory() {
       const name = memberName(member);
       const haystack = `${name} ${member.memberNumber} ${member.mobile} ${member.email}`.toLowerCase();
       if (needle && !haystack.includes(needle)) return false;
-      if (location !== "all" && member.location !== location) return false;
-      const status = contributionMonthStatus(member, book.contributions, month);
-      if (contribution !== "all" && status !== contribution) return false;
+      if (status !== "all" && member.status !== status) return false;
+      if (scheme !== "all" && member.scheme !== scheme) return false;
+      if (manager !== "all" && member.relationshipManagerId !== manager) return false;
+      const monthStatus = contributionMonthStatus(member, book.contributions, month);
+      if (contribution === "exception" && monthStatus !== "missing" && monthStatus !== "partial") {
+        return false;
+      }
+      if (contribution !== "all" && contribution !== "exception" && monthStatus !== contribution) {
+        return false;
+      }
       if (openOnly.withdrawal && !openWithdrawal(book, member.id)) return false;
       if (openOnly.request && !openRequest(book, member.id)) return false;
       if (openOnly.joined && !member.memberSince.startsWith(month)) return false;
       return true;
     });
-  }, [book, contribution, location, members, month, openOnly, query]);
+  }, [book, contribution, manager, members, month, openOnly, query, scheme, status]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, status, scheme, manager, contribution, openOnly]);
+
+  const pageSize = 12;
+  const pages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const visibleRows = rows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div>
       <PageHeader
-        title="Members"
-        description="Search by name, member number, mobile, or email."
+        title="Member Directory"
+        description="Find members and review their pension information."
         action={
           canRegister ? (
-            <Button onClick={() => setRegistering(true)}>Register member</Button>
+            <Button onClick={() => setRegistering(true)}>Add member</Button>
           ) : null
         }
       />
-      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-navy sm:col-span-2">
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <label className="flex min-w-[220px] flex-1 flex-col gap-1.5 text-sm font-medium text-navy">
           Search
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Name, member number, mobile, or email"
+            placeholder="Name or member reference"
             className={controlClass}
           />
         </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-navy">
-          Location
-          <select
-            value={location}
-            onChange={(event) => setLocation(event.target.value)}
-            className={controlClass}
-          >
-            <option value="all">All locations</option>
-            {locations.map((item) => (
+        <label className="flex w-full flex-col gap-1.5 text-sm font-medium text-navy sm:w-40">
+          Status
+          <select value={status} onChange={(event) => setStatus(event.target.value)} className={controlClass}>
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="closed">Closed</option>
+          </select>
+        </label>
+        <label className="flex w-full flex-col gap-1.5 text-sm font-medium text-navy sm:w-48">
+          Scheme
+          <select value={scheme} onChange={(event) => setScheme(event.target.value)} className={controlClass}>
+            <option value="all">All schemes</option>
+            {schemes.map((item) => (
               <option key={item}>{item}</option>
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1.5 text-sm font-medium text-navy">
+        {showManagers ? (
+          <label className="flex w-full flex-col gap-1.5 text-sm font-medium text-navy sm:w-52">
+            Relationship manager
+            <select value={manager} onChange={(event) => setManager(event.target.value)} className={controlClass}>
+              <option value="all">All managers</option>
+              {managers.map((person) => (
+                <option key={person.id} value={person.id}>{person.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+        <label className="flex w-full flex-col gap-1.5 text-sm font-medium text-navy sm:w-48">
           Contribution this month
           <select
             value={contribution}
@@ -97,6 +134,7 @@ export function MemberDirectory() {
             className={controlClass}
           >
             <option value="all">Any</option>
+            <option value="exception">Missing or short</option>
             <option value="received">Received</option>
             <option value="missing">Missing</option>
             <option value="partial">Partial</option>
@@ -142,7 +180,7 @@ export function MemberDirectory() {
           description="Members assigned to you appear here."
           action={
             canRegister ? (
-              <Button onClick={() => setRegistering(true)}>Register member</Button>
+              <Button onClick={() => setRegistering(true)}>Add member</Button>
             ) : undefined
           }
         />
@@ -154,49 +192,61 @@ export function MemberDirectory() {
           action={<Button onClick={() => setQuery("")}>Clear search</Button>}
         />
       ) : (
-        <DataTable
-          columns={[
-            { key: "name", header: "Member" },
-            { key: "number", header: "Number" },
-            { key: "mobile", header: "Mobile" },
-            { key: "location", header: "Location" },
-            { key: "status", header: "Status" },
-            { key: "pot", header: "Pot", className: "text-right" },
-            { key: "last", header: "Last contribution" },
-            { key: "open", header: "Open items" },
-          ]}
-          rows={rows.map((member) => {
-            const position = memberPosition(book, member.id);
-            const items = [
-              openWithdrawal(book, member.id) ? "Withdrawal" : null,
-              openRequest(book, member.id) ? "Request" : null,
-              overdueTasks(book, member.id).length > 0 ? "Overdue task" : null,
-            ].filter(Boolean);
-            return {
-              id: member.id,
-              cells: {
-                name: (
-                  <Link href={`/members/${member.id}`} className="font-medium text-navy hover:underline">
-                    {memberName(member)}
-                  </Link>
-                ),
-                number: member.memberNumber,
-                mobile: member.mobile,
-                location: member.location,
-                status: (
-                  <StatusBadge label={member.status === "active" ? "Active" : "Closed"} />
-                ),
-                pot: (
-                  <span className="tabular-nums">
-                    {position.pot === null ? "Unavailable" : ghs(position.pot)}
-                  </span>
-                ),
-                last: position.latest ? formatDate(position.latest.date) : "None",
-                open: items.length > 0 ? items.join(", ") : "None",
-              },
-            };
-          })}
-        />
+        <>
+          <DataTable
+            columns={[
+              { key: "name", header: "Member" },
+              { key: "scheme", header: "Scheme" },
+              { key: "status", header: "Status" },
+              { key: "manager", header: "Relationship manager" },
+              { key: "pot", header: "Pension value", className: "text-right" },
+              { key: "last", header: "Latest contribution", className: "text-right" },
+              { key: "activity", header: "Last activity" },
+              { key: "action", header: "Actions" },
+            ]}
+            rows={visibleRows.map((member) => {
+              const position = memberPosition(book, member.id);
+              const managerName =
+                book.staff.find((person) => person.id === member.relationshipManagerId)?.name ?? "—";
+              const activity = lastActivity(book, member.id);
+              return {
+                id: member.id,
+                cells: {
+                  name: (
+                    <Link href={`/members/${member.id}`} className="font-medium text-navy hover:underline">
+                      {memberName(member)}
+                      <span className="block text-xs font-normal text-muted">{member.memberNumber}</span>
+                    </Link>
+                  ),
+                  scheme: member.scheme,
+                  status: (
+                    <StatusBadge label={member.status === "active" ? "Active" : "Closed"} />
+                  ),
+                  manager: managerName,
+                  pot: (
+                    <span className="tabular-nums">
+                      {position.pot === null ? "Unavailable" : ghs(position.pot)}
+                    </span>
+                  ),
+                  last: (
+                    <span className="tabular-nums">
+                      {position.latest
+                        ? `${ghs(position.latest.amount)} · ${formatDate(position.latest.date)}`
+                        : "None"}
+                    </span>
+                  ),
+                  activity: activity ? formatDate(activity) : "None",
+                  action: (
+                    <Link href={`/members/${member.id}`} className="font-medium text-navy hover:underline">
+                      Open
+                    </Link>
+                  ),
+                },
+              };
+            })}
+          />
+          <Pagination page={page} pages={pages} onPage={setPage} />
+        </>
       )}
       <RegisterDialog
         open={registering}
@@ -235,7 +285,7 @@ function RegisterDialog({
   }) => void;
 }) {
   return (
-    <Modal open={open} title="Register member" onClose={onClose}>
+    <Modal open={open} title="Add member" onClose={onClose}>
       <form
         className="grid gap-3"
         onSubmit={(event) => {
@@ -279,10 +329,23 @@ function RegisterDialog({
           <Field name="retirementAge" label="Retirement age" type="number" />
           <Field name="targetPot" label="Target pot" type="number" />
         </div>
-        <Button type="submit">Register member</Button>
+        <Button type="submit">Add member</Button>
       </form>
     </Modal>
   );
+}
+
+function lastActivity(book: Book, memberId: string) {
+  const dates = [
+    ...book.contributions.filter((row) => row.memberId === memberId).map((row) => row.date),
+    ...book.withdrawals.filter((row) => row.memberId === memberId).map((row) => row.submittedAt),
+    ...book.requests.filter((row) => row.memberId === memberId).map((row) => row.createdAt),
+    ...book.appointments.filter((row) => row.memberId === memberId).map((row) => row.at),
+    ...book.messages.filter((row) => row.memberId === memberId).map((row) => row.at),
+    ...book.documents.filter((row) => row.memberId === memberId).map((row) => row.uploadedAt),
+  ].filter(Boolean);
+  if (dates.length === 0) return null;
+  return dates.sort((a, b) => a.localeCompare(b)).at(-1) ?? null;
 }
 
 function Field({

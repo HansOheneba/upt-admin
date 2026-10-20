@@ -27,7 +27,7 @@ export function StaffBoard() {
   return (
     <div>
       <PageHeader
-        title="Staff"
+        title="Users & permissions"
         description="Add or remove access, and set the role. Seeing a queue and changing it stay separate."
       />
       {active.length === 0 ? (

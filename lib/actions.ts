@@ -8,7 +8,7 @@ import type {
 } from "@/lib/domain";
 import { memberName } from "@/lib/domain";
 import { ghs } from "@/lib/format";
-import { priceOn, unitsFor } from "@/lib/pension";
+import { memberPosition, priceOn, unitsFor } from "@/lib/pension";
 
 export type ActionResult = { book: Book } | { error: string };
 
@@ -53,6 +53,13 @@ function writeAudit(
       ...book.audit,
     ],
   };
+}
+
+function abovePot(book: Book, row: Withdrawal) {
+  const position = memberPosition(book, row.memberId);
+  if (position.pot === null) return "The pot is unavailable, so this cannot be paid.";
+  if (row.amount > position.pot) return "The amount is above the pot, so it cannot be paid.";
+  return null;
 }
 
 function fail(error: string): ActionResult {
@@ -401,6 +408,8 @@ export function approveWithdrawal(
   if (!row) return fail("Withdrawal not found.");
   if (row.status !== "checking") return fail("Approve a withdrawal from under review.");
   if (!note.trim()) return fail("Add a note for the approval.");
+  const blocked = abovePot(book, row);
+  if (blocked) return fail(blocked);
   const next: Withdrawal = {
     ...row,
     status: "approved",
@@ -478,6 +487,8 @@ export function completePayment(
   if (!input.reference.trim() || !input.paidAt) {
     return fail("Enter the payment reference and the date paid.");
   }
+  const blocked = abovePot(book, row);
+  if (blocked) return fail(blocked);
   const price = priceOn(book.unitPrices, input.paidAt);
   if (!price) return fail("No unit price applies on the payment date.");
   const unitsTaken = unitsFor(row.amount, price.price);

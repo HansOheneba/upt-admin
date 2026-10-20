@@ -1,5 +1,5 @@
 export const SCHEME = "My Own Pension" as const;
-export const BOOK_VERSION = 2;
+export const BOOK_VERSION = 3;
 export const BOOK_KEY = "upt.staff.book.v1";
 export const SESSION_KEY = "upt.staff.session";
 

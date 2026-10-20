@@ -19,8 +19,8 @@ export function UnitPriceBoard() {
   return (
     <div>
       <PageHeader
-        title="Unit price"
-        description="The price members see, and the price used for contributions and withdrawals paid that day. A new price is added. It does not replace history."
+        title="Fund settings"
+        description="The unit price used for contributions and for withdrawals paid that day. A new price is added. It does not replace history."
       />
       {current ? (
         <article className="rounded-xl border border-line bg-card px-5 py-4">
@@ -61,7 +61,7 @@ export function UnitPriceBoard() {
           <Button type="submit">Set unit price</Button>
         </form>
       ) : null}
-      <h2 className="mt-6 mb-3 text-sm font-medium text-navy">Previous prices</h2>
+      <h2 className="mt-6 mb-3 text-base font-semibold text-navy">Price history</h2>
       {history.length === 0 ? (
         <p className="text-sm text-muted">No prices stored.</p>
       ) : (
