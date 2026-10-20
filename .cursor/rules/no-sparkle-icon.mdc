@@ -1,0 +1,10 @@
+---
+description: Never use a sparkle icon or sparkle emoji in this product
+alwaysApply: true
+---
+
+# No sparkle icon
+
+Never use a sparkle icon, sparkle glyph, or sparkle emoji anywhere in this codebase. That includes Lucide `Sparkles`, `WandSparkles`, and the ✨ character in UI, copy, comments, and commits.
+
+For AI or copilot surfaces, use `Brain` from `lucide-react`.

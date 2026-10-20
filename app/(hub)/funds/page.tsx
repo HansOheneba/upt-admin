@@ -1,9 +1,5 @@
-import { FundBoard } from "@/components/funds/fund-board";
-
-export const metadata = {
-  title: "Funds",
-};
+import { redirect } from "next/navigation";
 
 export default function FundsPage() {
-  return <FundBoard />;
+  redirect("/unit-price");
 }

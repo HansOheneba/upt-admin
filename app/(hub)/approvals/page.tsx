@@ -1,9 +1,5 @@
-import { ApprovalsBoard } from "@/components/approvals/approvals-board";
-
-export const metadata = {
-  title: "Approvals",
-};
+import { redirect } from "next/navigation";
 
 export default function ApprovalsPage() {
-  return <ApprovalsBoard />;
+  redirect("/withdrawals");
 }

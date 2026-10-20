@@ -1,9 +1,7 @@
-import { OperationsBoard } from "@/components/operations/operations-board";
+import { HomeBoard } from "@/components/home/home-board";
 
-export const metadata = {
-  title: "Operations",
-};
+export const metadata = { title: "Home" };
 
 export default function OperationsPage() {
-  return <OperationsBoard />;
+  return <HomeBoard />;
 }

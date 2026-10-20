@@ -2,331 +2,270 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
 import {
-  ACTIVE_FUND,
-  approvals as approvalSeed,
-  fundById,
-  members as memberSeed,
-  requests as requestSeed,
-  withdrawals as withdrawalSeed,
-  type Approval,
-  type FundBook,
+  addContribution,
+  addStaff,
+  addTask,
+  approveWithdrawal,
+  closeMember,
+  completePayment,
+  completeTask,
+  correctMember,
+  declineWithdrawal,
+  postPayment,
+  publishSession,
+  publishValuation,
+  registerMember,
+  removeStaff,
+  replyToRequest,
+  returnWithdrawal,
+  reverseContribution,
+  sendMessage,
+  setAppointmentStatus,
+  setUnitPrice,
+  startReview,
+  uploadDocument,
+  type ActionResult,
+} from "@/lib/actions";
+import {
+  canAdvise,
+  canCorrectMember,
+  canPostMoney,
+  canReviewWithdrawal,
+  canSeeArea,
+  isSupervisor,
+  visibleMembers,
+  type Book,
+  type DocumentTag,
   type Member,
-  type MemberRequest,
-  type RequestKind,
-  type Withdrawal,
-} from "@/lib/demo";
-
-export type DialogKind =
-  | "member"
-  | "request"
-  | "withdrawal"
-  | "contribution"
-  | "memberContribution"
-  | "beneficiary";
-
-type MemberInput = {
-  name: string;
-  dateOfBirth: string;
-  ssnit: string;
-  email: string;
-  phone: string;
-  gender: string;
-  maritalStatus: string;
-  address: string;
-  sponsorName: string;
-};
-
-type RequestInput = {
-  memberId: string;
-  kind: RequestKind;
-  subject: string;
-  channel: string;
-};
-
-type WithdrawalInput = {
-  memberId: string;
-  amount: number;
-  reason: string;
-  channel: string;
-};
-
-type ContributionInput = {
-  sponsorName: string;
-  period: string;
-  amount: number;
-};
-
-type MemberContributionInput = {
-  employee: number;
-  employer: number;
-};
-
-type BeneficiaryInput = {
-  name: string;
-  relationship: string;
-  share: string;
-};
+  type Role,
+  type Staff,
+} from "@/lib/domain";
+import {
+  getClientBook,
+  getClientSession,
+  getServerBook,
+  getServerSession,
+  subscribeBook,
+  subscribeSession,
+  writeBook,
+  writeSession,
+} from "@/lib/storage";
 
 type RecordsValue = {
-  fund: FundBook;
-  setFundId: (id: string) => void;
+  ready: boolean;
+  staff: Staff | null;
+  book: Book;
   members: Member[];
-  allMembers: Member[];
-  allRequests: MemberRequest[];
-  requests: MemberRequest[];
-  withdrawals: Withdrawal[];
-  approvals: Approval[];
-  dialog: DialogKind | null;
-  dialogMemberId: string | null;
-  openDialog: (kind: DialogKind, memberId?: string) => void;
-  closeDialog: () => void;
-  registerMember: (input: MemberInput) => Member;
-  logRequest: (input: RequestInput) => void;
-  recordWithdrawal: (input: WithdrawalInput) => void;
-  recordContribution: (input: ContributionInput) => void;
-  recordMemberContribution: (
-    memberId: string,
-    input: MemberContributionInput,
-  ) => void;
-  addBeneficiary: (memberId: string, input: BeneficiaryInput) => void;
-  approve: (id: string) => void;
+  notice: string | null;
+  clearNotice: () => void;
+  signIn: (email: string) => string | null;
+  signOut: () => void;
+  canRegister: boolean;
+  canCorrect: boolean;
+  canFinance: boolean;
+  canReview: boolean;
+  canSupervise: boolean;
+  canSee: (area: Parameters<typeof canSeeArea>[1]) => boolean;
+  canAdviseMember: (member: Member) => boolean;
+  registerMember: (input: Parameters<typeof registerMember>[2]) => boolean;
+  correctMember: (memberId: string, patch: Partial<Member>) => boolean;
+  closeMember: (memberId: string) => boolean;
+  setUnitPrice: (input: { date: string; price: number }) => boolean;
+  postPayment: (paymentId: string, memberId: string) => boolean;
+  addContribution: (input: { memberId: string; date: string; amount: number }) => boolean;
+  reverseContribution: (contributionId: string) => boolean;
+  startReview: (withdrawalId: string) => boolean;
+  approveWithdrawal: (withdrawalId: string, note: string) => boolean;
+  returnWithdrawal: (withdrawalId: string, reason: string) => boolean;
+  completePayment: (
+    withdrawalId: string,
+    input: { reference: string; paidAt: string },
+  ) => boolean;
+  declineWithdrawal: (withdrawalId: string, reason: string) => boolean;
+  replyToRequest: (requestId: string, reply: string) => boolean;
+  setAppointmentStatus: (
+    appointmentId: string,
+    status: "confirmed" | "cancelled",
+    at?: string,
+  ) => boolean;
+  publishSession: (input: Parameters<typeof publishSession>[2]) => boolean;
+  addTask: (input: Parameters<typeof addTask>[2]) => boolean;
+  completeTask: (taskId: string) => boolean;
+  sendMessage: (memberId: string, body: string) => boolean;
+  uploadDocument: (input: {
+    memberId: string;
+    name: string;
+    tag: DocumentTag;
+  }) => boolean;
+  publishValuation: (propertyId: string, valuation: number) => boolean;
+  addStaff: (input: { name: string; email: string; roles: Role[] }) => boolean;
+  removeStaff: (staffId: string) => boolean;
 };
 
 const RecordsContext = createContext<RecordsValue | null>(null);
 
-function stamp() {
-  return new Intl.DateTimeFormat("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date());
-}
-
-function slug(name: string) {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return base || "member";
-}
-
-function nextId(prefix: string, existing: string[]) {
-  const numbers = existing.map((id) => {
-    const match = id.match(/(\d+)$/);
-    return match ? Number(match[1]) : 0;
-  });
-  const next = Math.max(1000, ...numbers) + 1;
-  return `${prefix}-${next}`;
-}
-
 export function RecordsProvider({ children }: { children: ReactNode }) {
-  const [fundId, setFundId] = useState(ACTIVE_FUND.id);
-  const [allMembers, setAllMembers] = useState(memberSeed);
-  const [allRequests, setAllRequests] = useState(requestSeed);
-  const [allWithdrawals, setAllWithdrawals] = useState(withdrawalSeed);
-  const [allApprovals, setAllApprovals] = useState(approvalSeed);
-  const [dialog, setDialog] = useState<DialogKind | null>(null);
-  const [dialogMemberId, setDialogMemberId] = useState<string | null>(null);
+  const book = useSyncExternalStore(subscribeBook, getClientBook, getServerBook);
+  const staffId = useSyncExternalStore(subscribeSession, getClientSession, getServerSession);
+  const hydrated = useSyncExternalStore(subscribeSession, () => true, () => false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const staff = book.staff.find((item) => item.id === staffId && item.active) ?? null;
 
-  const fund = fundById(fundId);
+  const apply = useCallback((result: ActionResult) => {
+    if ("error" in result) {
+      setNotice(result.error);
+      return false;
+    }
+    setNotice(null);
+    writeBook(result.book);
+    return true;
+  }, []);
+
+  const guard = useCallback(
+    (allowed: boolean, result: () => ActionResult) => {
+      if (!staff || !allowed) {
+        setNotice("You can view this. Your role cannot change it.");
+        return false;
+      }
+      return apply(result());
+    },
+    [apply, staff],
+  );
 
   const value = useMemo<RecordsValue>(() => {
-    const members = allMembers.filter((member) => member.fundId === fund.id);
-    const memberIds = new Set(members.map((member) => member.id));
-
+    const members = staff ? visibleMembers(book, staff) : [];
     return {
-      fund,
-      setFundId,
+      ready: hydrated,
+      staff,
+      book,
       members,
-      allMembers,
-      allRequests,
-      requests: allRequests.filter((request) => memberIds.has(request.memberId)),
-      withdrawals: allWithdrawals.filter((item) => memberIds.has(item.memberId)),
-      approvals: allApprovals.filter((item) => item.fundId === fund.id),
-      dialog,
-      dialogMemberId,
-      openDialog: (kind, memberId) => {
-        setDialogMemberId(memberId ?? null);
-        setDialog(kind);
+      notice,
+      clearNotice: () => setNotice(null),
+      signIn: (email) => {
+        const person = book.staff.find(
+          (item) => item.active && item.email.toLowerCase() === email.trim().toLowerCase(),
+        );
+        if (!person) return "That work email is not on the staff list.";
+        writeSession(person.id);
+        return null;
       },
-      closeDialog: () => setDialog(null),
-      registerMember: (input) => {
-        const idBase = slug(input.name);
-        const id = allMembers.some((member) => member.id === idBase)
-          ? `${idBase}-${allMembers.length + 1}`
-          : idBase;
-        const member: Member = {
-          id,
-          ref: nextId(
-            fund.refPrefix,
-            allMembers
-              .map((item) => item.ref)
-              .filter((ref) => ref.startsWith(`${fund.refPrefix}-`)),
-          ),
-          name: input.name.trim(),
-          dateOfBirth: input.dateOfBirth,
-          ssnit: input.ssnit.trim(),
-          email: input.email.trim(),
-          phone: input.phone.trim(),
-          nationality: "Ghanaian",
-          address: input.address.trim(),
-          gender: input.gender,
-          maritalStatus: input.maritalStatus,
-          joined: stamp(),
-          fundId: fund.id,
-          sponsorRef: nextId("SPT", allMembers.map((item) => item.sponsorRef)),
-          sponsorName: input.sponsorName.trim(),
-          sponsorAddress: input.address.trim(),
-          beneficiaries: [],
-          statement: {
-            asAt: fund.asAt,
-            contribution: { employee: 0, employer: 0 },
-            gainLoss: { employee: 0, employer: 0 },
-            outflow: { employee: 0, employer: 0 },
-          },
-        };
-        setAllMembers((current) => [member, ...current]);
-        return member;
+      signOut: () => {
+        writeSession(null);
       },
-      logRequest: (input) => {
-        const member = allMembers.find((item) => item.id === input.memberId);
-        if (!member) return;
-        const request: MemberRequest = {
-          id: nextId("REQ", allRequests.map((item) => item.id)),
-          memberId: member.id,
-          memberName: member.name,
-          kind: input.kind,
-          subject: input.subject.trim(),
-          channel: input.channel,
-          opened: stamp(),
-          status: "Open",
-          owner: "Unassigned",
-        };
-        setAllRequests((current) => [request, ...current]);
-      },
-      recordWithdrawal: (input) => {
-        const member = allMembers.find((item) => item.id === input.memberId);
-        if (!member) return;
-        const id = nextId("WD", allWithdrawals.map((item) => item.id));
-        const withdrawal: Withdrawal = {
-          id,
-          memberId: member.id,
-          memberName: member.name,
-          amount: input.amount,
-          reason: input.reason,
-          channel: input.channel,
-          stage: "Requested",
-          opened: stamp(),
-        };
-        setAllWithdrawals((current) => [withdrawal, ...current]);
-        const request: MemberRequest = {
-          id: nextId("REQ", allRequests.map((item) => item.id)),
-          memberId: member.id,
-          memberName: member.name,
-          kind: "Withdrawal",
-          subject: input.reason,
-          channel: input.channel,
-          opened: stamp(),
-          status: "Open",
-          owner: "Unassigned",
-        };
-        setAllRequests((current) => [request, ...current]);
-      },
-      recordContribution: (input) => {
-        const approval: Approval = {
-          id: nextId("CA", allApprovals.map((item) => item.id)),
-          fundId: fund.id,
-          kind: "Contribution",
-          title: `${input.sponsorName.trim()} · ${input.period.trim()}`,
-          detail: `${fund.name} contribution batch`,
-          amount: input.amount,
-          raisedBy: "Contributions desk",
-          waitingSince: stamp(),
-        };
-        setAllApprovals((current) => [approval, ...current]);
-      },
-      recordMemberContribution: (memberId, input) => {
-        setAllMembers((current) =>
-          current.map((member) =>
-            member.id === memberId
-              ? {
-                  ...member,
-                  statement: {
-                    ...member.statement,
-                    asAt: stamp(),
-                    contribution: {
-                      employee:
-                        member.statement.contribution.employee + input.employee,
-                      employer:
-                        member.statement.contribution.employer + input.employer,
-                    },
-                  },
-                }
-              : member,
-          ),
+      canRegister: staff ? canCorrectMember(staff) : false,
+      canCorrect: staff ? canCorrectMember(staff) : false,
+      canFinance: staff ? canPostMoney(staff) : false,
+      canReview: staff ? canReviewWithdrawal(staff) : false,
+      canSupervise: staff ? isSupervisor(staff) : false,
+      canSee: (area) => (staff ? canSeeArea(staff, area) : false),
+      canAdviseMember: (member) => (staff ? canAdvise(staff, member) : false),
+      registerMember: (input) =>
+        guard(!!staff && canCorrectMember(staff), () => registerMember(book, staff!, input)),
+      correctMember: (memberId, patch) =>
+        guard(!!staff && canCorrectMember(staff), () => correctMember(book, staff!, memberId, patch)),
+      closeMember: (memberId) =>
+        guard(!!staff && canCorrectMember(staff), () => closeMember(book, staff!, memberId)),
+      setUnitPrice: (input) =>
+        guard(!!staff && canPostMoney(staff), () => setUnitPrice(book, staff!, input)),
+      postPayment: (paymentId, memberId) =>
+        guard(!!staff && canPostMoney(staff), () => postPayment(book, staff!, paymentId, memberId)),
+      addContribution: (input) =>
+        guard(!!staff && canPostMoney(staff), () => addContribution(book, staff!, input)),
+      reverseContribution: (contributionId) =>
+        guard(!!staff && canPostMoney(staff), () =>
+          reverseContribution(book, staff!, contributionId),
+        ),
+      startReview: (withdrawalId) =>
+        guard(!!staff && canReviewWithdrawal(staff), () =>
+          startReview(book, staff!, withdrawalId),
+        ),
+      approveWithdrawal: (withdrawalId, note) =>
+        guard(!!staff && canReviewWithdrawal(staff), () =>
+          approveWithdrawal(book, staff!, withdrawalId, note),
+        ),
+      returnWithdrawal: (withdrawalId, reason) =>
+        guard(!!staff && canReviewWithdrawal(staff), () =>
+          returnWithdrawal(book, staff!, withdrawalId, reason),
+        ),
+      completePayment: (withdrawalId, input) =>
+        guard(!!staff && canPostMoney(staff), () =>
+          completePayment(book, staff!, withdrawalId, input),
+        ),
+      declineWithdrawal: (withdrawalId, reason) =>
+        guard(!!staff && canReviewWithdrawal(staff), () =>
+          declineWithdrawal(book, staff!, withdrawalId, reason),
+        ),
+      replyToRequest: (requestId, reply) =>
+        guard(!!staff && canCorrectMember(staff), () =>
+          replyToRequest(book, staff!, requestId, reply),
+        ),
+      setAppointmentStatus: (appointmentId, status, at) => {
+        const appointment = book.appointments.find((item) => item.id === appointmentId);
+        const member = book.members.find((item) => item.id === appointment?.memberId);
+        return guard(!!staff && !!member && canAdvise(staff, member), () =>
+          setAppointmentStatus(book, staff!, appointmentId, status, at),
         );
       },
-      addBeneficiary: (memberId, input) => {
-        setAllMembers((current) =>
-          current.map((member) =>
-            member.id === memberId
-              ? {
-                  ...member,
-                  beneficiaries: [
-                    ...member.beneficiaries,
-                    {
-                      name: input.name.trim(),
-                      relationship: input.relationship.trim(),
-                      share: input.share.trim(),
-                    },
-                  ],
-                }
-              : member,
-          ),
+      publishSession: (input) => {
+        const member = book.members.find((item) => item.id === input.memberId);
+        return guard(!!staff && !!member && canAdvise(staff, member), () =>
+          publishSession(book, staff!, input),
         );
       },
-      approve: (id) => {
-        const item = allApprovals.find((approval) => approval.id === id);
-        setAllApprovals((current) =>
-          current.filter((approval) => approval.id !== id),
-        );
-        const withdrawalId = item?.title.match(/WD-\d+/)?.[0];
-        if (!withdrawalId) return;
-        setAllWithdrawals((current) =>
-          current.map((withdrawal) =>
-            withdrawal.id === withdrawalId
-              ? { ...withdrawal, stage: "Approved" }
-              : withdrawal,
-          ),
+      addTask: (input) => {
+        const member = book.members.find((item) => item.id === input.memberId);
+        return guard(!!staff && !!member && canAdvise(staff, member), () =>
+          addTask(book, staff!, input),
         );
       },
+      completeTask: (taskId) => {
+        const task = book.tasks.find((item) => item.id === taskId);
+        const member = book.members.find((item) => item.id === task?.memberId);
+        return guard(!!staff && !!member && canAdvise(staff, member), () =>
+          completeTask(book, staff!, taskId),
+        );
+      },
+      sendMessage: (memberId, body) =>
+        guard(
+          !!staff && (canCorrectMember(staff) || staff.roles.includes("relationship_manager")),
+          () => sendMessage(book, staff!, memberId, body),
+        ),
+      uploadDocument: (input) =>
+        guard(
+          !!staff &&
+            (canCorrectMember(staff) ||
+              staff.roles.includes("relationship_manager") ||
+              isSupervisor(staff)),
+          () => uploadDocument(book, staff!, input),
+        ),
+      publishValuation: (propertyId, valuation) => {
+        const property = book.properties.find((item) => item.id === propertyId);
+        const member = book.members.find((item) => item.id === property?.memberId);
+        return guard(!!staff && !!member && canAdvise(staff, member), () =>
+          publishValuation(book, staff!, propertyId, valuation),
+        );
+      },
+      addStaff: (input) =>
+        guard(!!staff && isSupervisor(staff), () => addStaff(book, staff!, input)),
+      removeStaff: (targetId) =>
+        guard(!!staff && isSupervisor(staff), () => removeStaff(book, staff!, targetId)),
     };
-  }, [
-    allApprovals,
-    allMembers,
-    allRequests,
-    allWithdrawals,
-    dialog,
-    dialogMemberId,
-    fund,
-  ]);
+  }, [apply, book, guard, hydrated, notice, staff, staffId]);
 
-  return (
-    <RecordsContext.Provider value={value}>{children}</RecordsContext.Provider>
-  );
+  return <RecordsContext.Provider value={value}>{children}</RecordsContext.Provider>;
 }
 
 export function useRecords() {
   const value = useContext(RecordsContext);
-  if (!value) {
-    throw new Error("useRecords must be used in the operations hub");
-  }
+  if (!value) throw new Error("useRecords must be used in the staff console");
   return value;
 }

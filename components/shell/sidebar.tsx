@@ -4,10 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 import { Logo } from "@/components/brand/logo";
+import { useRecords } from "@/components/records/records-provider";
 import { isActiveRoute, NAV_ITEMS } from "@/lib/navigation";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { canSee } = useRecords();
+  const items = NAV_ITEMS.filter((item) => canSee(item.area));
 
   return (
     <aside className="print-hide fixed inset-y-0 left-0 flex w-[244px] flex-col bg-navy text-white">
@@ -16,11 +19,11 @@ export function Sidebar() {
           <Logo width={180} priority />
         </div>
         <p className="mt-3 text-[11px] font-medium tracking-wide text-white/60 uppercase">
-          Operations
+          My Own Pension
         </p>
       </div>
-      <nav className="flex flex-1 flex-col gap-1 px-3 pb-4">
-        {NAV_ITEMS.map((item) => {
+      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-4">
+        {items.map((item) => {
           const active = isActiveRoute(pathname, item.href);
           const Icon = item.icon;
 
