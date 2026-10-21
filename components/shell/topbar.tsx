@@ -21,7 +21,7 @@ function BreadcrumbTrail() {
   const crumbs = breadcrumbs(pathname);
 
   return (
-    <nav aria-label="Breadcrumb" className="min-w-0 truncate text-[13px] text-muted">
+    <nav aria-label="Breadcrumb" className="hidden min-w-0 truncate text-[13px] text-muted sm:block">
       {crumbs.map((crumb, index) => (
         <span key={`${crumb.label}-${index}`}>
           {index > 0 ? <span className="px-1.5 text-[#C5CDD8]">/</span> : null}
@@ -72,8 +72,8 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
     : 0;
 
   return (
-    <header className="print-hide sticky top-0 z-10 flex h-16 items-center justify-between gap-6 border-b border-line bg-card px-4 sm:px-6 lg:px-7">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="print-hide sticky top-0 z-10 flex h-16 items-center justify-between gap-2 border-b border-line bg-card px-3 sm:gap-4 sm:px-6 lg:px-7">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <button
           type="button"
           onClick={onMenu}
@@ -82,17 +82,17 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
         >
           <Menu className="size-[18px]" aria-hidden />
         </button>
-        <Suspense fallback={<nav aria-label="Breadcrumb" className="h-4 min-w-16" />}>
+        <Suspense fallback={<nav aria-label="Breadcrumb" className="hidden h-4 min-w-16 sm:block" />}>
           <BreadcrumbTrail />
         </Suspense>
       </div>
-      <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+      <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
         <label className="min-w-0 text-right">
           <span className="hidden text-[11px] leading-4 text-muted sm:block">Scheme</span>
           <select
             value={schemeId}
             onChange={(event) => setScheme(event.target.value)}
-            className="block max-w-28 cursor-pointer truncate bg-transparent text-right text-[13px] leading-4 font-medium text-navy sm:max-w-52"
+            className="block w-28 max-w-[34vw] cursor-pointer truncate bg-transparent text-right text-[13px] leading-4 font-medium text-navy sm:w-52 sm:max-w-52"
             aria-label="Working scheme"
           >
             {schemes.length > 1 ? <option value="all">All schemes</option> : null}
@@ -136,12 +136,12 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
             <span className="flex size-8 items-center justify-center rounded-full bg-navy text-[11px] font-medium text-white">
               {staffInitials(staff.name)}
             </span>
-            <ChevronDown className="size-4 text-muted" aria-hidden />
+            <ChevronDown className="hidden size-4 text-muted sm:block" aria-hidden />
           </button>
           {menuOpen ? (
             <div
               role="menu"
-              className="absolute right-0 z-20 mt-2 w-72 rounded-[10px] border border-line bg-card p-2 shadow-sm"
+              className="absolute right-0 z-20 mt-2 w-[min(18rem,calc(100vw-1.5rem))] rounded-[10px] border border-line bg-card p-2 shadow-sm"
             >
               <p className="px-2 py-1.5 text-sm font-medium text-navy">{staff.name}</p>
               <p className="px-2 pb-2 text-xs text-muted">{role}</p>

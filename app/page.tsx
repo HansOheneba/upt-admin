@@ -7,12 +7,12 @@ export const metadata = {
 
 export default function SignInPage() {
   return (
-    <main className="flex flex-1 items-center justify-center bg-background px-6 py-16">
+    <main className="flex flex-1 items-center justify-center bg-background px-4 py-10 sm:px-6 sm:py-16">
       <div className="w-full max-w-[420px]">
         <div className="mb-8 flex justify-center">
           <Logo width={220} priority />
         </div>
-        <section className="rounded-2xl border border-line bg-card px-8 py-8">
+        <section className="rounded-2xl border border-line bg-card px-5 py-6 sm:px-8 sm:py-8">
           <h1 className="text-xl font-medium tracking-tight text-navy">
             Staff sign in
           </h1>

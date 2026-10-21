@@ -144,9 +144,9 @@ function WithdrawalDetail({ id, onClose }: { id: string; onClose: () => void }) 
 
   return (
     <section className="mt-4 rounded-xl border border-line bg-card p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-medium text-navy">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-medium break-words text-navy">
             {member ? memberName(member) : row.name} · {ghs(row.amount)}
           </h2>
           <p className="mt-1 text-sm text-muted">

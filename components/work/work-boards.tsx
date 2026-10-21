@@ -35,14 +35,17 @@ function MonthGrid({
 
   return (
     <div className="mb-4 rounded-[12px] border border-line bg-card p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <button type="button" onClick={onPrev} className="cursor-pointer text-sm font-medium text-navy">Previous</button>
-        <p className="text-sm font-medium text-navy">{label}</p>
-        <button type="button" onClick={onNext} className="cursor-pointer text-sm font-medium text-navy">Next</button>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <button type="button" onClick={onPrev} className="shrink-0 cursor-pointer text-sm font-medium text-navy">Previous</button>
+        <p className="min-w-0 truncate text-center text-sm font-medium text-navy">{label}</p>
+        <button type="button" onClick={onNext} className="shrink-0 cursor-pointer text-sm font-medium text-navy">Next</button>
       </div>
-      <div className="grid grid-cols-7 gap-1 text-center text-xs text-muted">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
-          <div key={day} className="py-1">{day}</div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-muted sm:text-xs">
+        {[["M", "Mon"], ["T", "Tue"], ["W", "Wed"], ["T", "Thu"], ["F", "Fri"], ["S", "Sat"], ["S", "Sun"]].map(([short, day]) => (
+          <div key={day} className="py-1">
+            <span className="sm:hidden">{short}</span>
+            <span className="hidden sm:inline">{day}</span>
+          </div>
         ))}
         {cells.map((day, index) => {
           const count = day
@@ -80,14 +83,14 @@ function Filters({
 }) {
   const { book, members } = useRecords();
   return (
-    <div className="mb-4 flex flex-wrap gap-3">
-      <select value={staffId} onChange={(event) => onStaff(event.target.value)} className={controlClass}>
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+      <select value={staffId} onChange={(event) => onStaff(event.target.value)} className={`${controlClass} sm:w-56`}>
         <option value="all">All staff</option>
         {book.staff.filter((person) => person.active).map((person) => (
           <option key={person.id} value={person.id}>{person.name}</option>
         ))}
       </select>
-      <select value={memberId} onChange={(event) => onMember(event.target.value)} className={`${controlClass} max-w-xs`}>
+      <select value={memberId} onChange={(event) => onMember(event.target.value)} className={`${controlClass} sm:max-w-xs`}>
         <option value="all">All members</option>
         {members.map((member) => (
           <option key={member.id} value={member.id}>{memberName(member)}</option>
@@ -281,7 +284,7 @@ export function TasksBoard() {
           ))}
         </select>
         <input name="title" required placeholder="What needs doing" className={controlClass} />
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <select name="owner" className={controlClass}>
             <option value="staff">Staff</option>
             <option value="member">Member</option>
@@ -402,9 +405,9 @@ export function DocumentsBoard() {
           {rows.map((row) => {
             const member = book.members.find((item) => item.id === row.memberId);
             return (
-              <li key={row.id} className="flex items-center justify-between px-5 py-3 text-sm">
-                <div>
-                  <p className="font-medium text-navy">{row.name}</p>
+              <li key={row.id} className="flex flex-col gap-2 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div className="min-w-0">
+                  <p className="font-medium break-words text-navy">{row.name}</p>
                   <p className="text-muted">
                     {member ? memberName(member) : "Member"} · {row.tag} · {row.uploadedBy === "member" ? "Member" : "Staff"} · {formatDate(row.uploadedAt)}
                   </p>

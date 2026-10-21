@@ -64,7 +64,7 @@ export function SchemesBoard() {
         <StatCard label="Memberships" value={String(records.memberships.length)} />
       </div>
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="flex min-w-[220px] flex-1 flex-col gap-1.5 text-sm font-medium text-navy">
+        <label className="flex w-full min-w-0 flex-1 flex-col gap-1.5 text-sm font-medium text-navy sm:min-w-[220px]">
           Search
           <input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Name or code" className={controlClass} />
         </label>

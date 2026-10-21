@@ -41,8 +41,8 @@ export function StaffBoard() {
       ) : (
         <ul className="divide-y divide-line rounded-xl border border-line bg-card">
           {active.map((person) => (
-            <li key={person.id} className="flex items-center justify-between gap-3 px-5 py-3">
-              <div>
+            <li key={person.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+              <div className="min-w-0">
                 <p className="text-sm font-medium text-navy">{person.name}</p>
                 <p className="text-xs text-muted">
                   {person.email}
@@ -56,12 +56,12 @@ export function StaffBoard() {
                   ))}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 {person.roles.includes("relationship_manager") ? (
                   <select
                     value={person.leadId ?? ""}
                     onChange={(event) => setReportingLine(person.id, event.target.value)}
-                    className={controlClass}
+                    className={`${controlClass} sm:w-48`}
                     aria-label={`Team lead for ${person.name}`}
                   >
                     <option value="">Team lead</option>

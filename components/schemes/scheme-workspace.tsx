@@ -239,7 +239,7 @@ export function SchemeWorkspace({ id }: { id: string }) {
             {memberships.map((membership) => {
               const person = records.book.members.find((item) => item.id === membership.memberId);
               return (
-                <li key={membership.id} className="flex items-center justify-between py-3 text-sm">
+                <li key={membership.id} className="flex items-start justify-between gap-3 py-3 text-sm">
                   <Link href={`/members/${membership.memberId}`} className="font-medium text-navy hover:underline">
                     {person ? memberName(person) : "Member"}
                     <span className="block text-xs font-normal text-muted">{membership.membershipNumber}</span>

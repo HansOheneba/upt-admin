@@ -26,7 +26,7 @@ export function Modal({
     <dialog
       ref={ref}
       onClose={onClose}
-      className="w-[min(440px,calc(100%-2rem))] rounded-xl border border-line bg-card p-0 text-foreground shadow-xl backdrop:bg-navy/40"
+      className="w-[min(440px,calc(100%-1.5rem))] max-w-[calc(100vw-1.5rem)] rounded-xl border border-line bg-card p-0 text-foreground shadow-xl backdrop:bg-navy/40"
     >
       <div className="flex items-center justify-between border-b border-line px-5 py-4">
         <h2 className="text-base font-medium text-navy">{title}</h2>

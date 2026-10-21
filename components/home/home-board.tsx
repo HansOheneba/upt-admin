@@ -153,7 +153,7 @@ export function HomeBoard() {
       </div>
 
       <section>
-        <div className="mb-3 flex items-end justify-between gap-3">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-[18px] font-semibold text-navy">Priority work queue</h2>
             <p className="mt-0.5 text-[13px] text-muted">Items requiring review or follow-up.</p>

@@ -80,9 +80,9 @@ export function UnitPriceBoard() {
       ) : (
         <ul className="divide-y divide-line rounded-xl border border-line bg-card">
           {history.map((row) => (
-            <li key={row.id} className="flex items-center justify-between px-5 py-3 text-sm">
+            <li key={row.id} className="flex flex-col gap-1 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
               <span className="tabular-nums text-navy">{row.price.toFixed(3)}</span>
-              <span className="text-muted">
+              <span className="text-muted sm:text-right">
                 {formatDate(row.date)} · {setter(row.setBy)}
               </span>
             </li>

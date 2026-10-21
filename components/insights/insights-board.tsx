@@ -113,7 +113,7 @@ export function MemberPicture() {
       </div>
 
       <Section title="Contribution this month">
-        <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="mb-4 grid grid-cols-3 gap-2 sm:gap-3">
           <Count label="Received" value={insights.contribution.received} />
           <Count label="Partial" value={insights.contribution.partial} />
           <Count label="Missing" value={insights.contribution.missing} />
@@ -201,7 +201,7 @@ function Planning({ planning }: { planning: NonNullable<ReturnType<typeof buildI
       <p className="text-sm text-muted">
         {`On file for ${planning.onFile} of ${planning.advised} ${planning.advised === 1 ? "member you advise" : "members you advise"}.`}
       </p>
-      <dl className="mt-4 grid gap-3 sm:grid-cols-4">
+      <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Count label="Conservative" value={planning.risk.conservative} />
         <Count label="Moderate" value={planning.risk.moderate} />
         <Count label="Aggressive" value={planning.risk.aggressive} />

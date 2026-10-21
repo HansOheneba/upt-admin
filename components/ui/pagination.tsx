@@ -10,7 +10,7 @@ export function Pagination({
   if (pages <= 1) return null;
 
   return (
-    <div className="mt-4 flex items-center justify-between text-sm">
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
       <p className="text-muted">
         Page {page} of {pages}
       </p>

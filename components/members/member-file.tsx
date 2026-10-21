@@ -88,8 +88,8 @@ export function MemberFile({ id }: { id: string }) {
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-[28px] leading-tight font-semibold text-navy">{memberName(member)}</h1>
-          <p className="mt-1 text-sm text-muted">
+          <h1 className="text-2xl leading-tight font-semibold break-words text-navy sm:text-[28px]">{memberName(member)}</h1>
+          <p className="mt-1 text-sm break-words text-muted">
             {holdings.length === 0
               ? "No membership in this view"
               : holdings
@@ -373,7 +373,7 @@ export function MemberFile({ id }: { id: string }) {
               .filter((row) => row.memberId === member.id)
               .map((row) => (
                 <li key={row.id} className="rounded-lg border border-line p-4">
-                  <div className="flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="font-medium text-navy">{row.subject}</p>
                     <StatusBadge label={row.status === "open" ? "Open" : "Replied"} />
                   </div>
@@ -893,8 +893,9 @@ function Ledger({
 }) {
   if (rows.length === 0) return <p className="text-sm text-muted">{empty}</p>;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-sm">
+    <>
+    <div className="hidden overflow-x-auto md:block">
+      <table className="w-full min-w-[640px] text-left text-sm">
         <thead className="text-xs text-muted">
           <tr>{headers.map((header) => <th key={header} className="px-2 py-2 font-medium">{header}</th>)}</tr>
         </thead>
@@ -909,6 +910,23 @@ function Ledger({
         </tbody>
       </table>
     </div>
+    <ul className="flex flex-col gap-3 md:hidden">
+      {rows.map((row, index) => (
+        <li key={index} className="rounded-[10px] border border-line px-3 py-3">
+          <dl className="flex flex-col gap-2">
+            {row.map((cell, cellIndex) => (
+              <div key={cellIndex} className="flex items-start justify-between gap-3 text-sm">
+                {headers[cellIndex] ? (
+                  <dt className="shrink-0 text-xs text-muted">{headers[cellIndex]}</dt>
+                ) : null}
+                <dd className={`min-w-0 break-words text-foreground ${headers[cellIndex] ? "text-right" : ""}`}>{cell}</dd>
+              </div>
+            ))}
+          </dl>
+        </li>
+      ))}
+    </ul>
+    </>
   );
 }
 

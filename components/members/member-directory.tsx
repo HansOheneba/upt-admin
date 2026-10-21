@@ -106,7 +106,7 @@ export function MemberDirectory() {
         }
       />
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="flex min-w-[220px] flex-1 flex-col gap-1.5 text-sm font-medium text-navy">
+        <label className="flex w-full min-w-0 flex-1 flex-col gap-1.5 text-sm font-medium text-navy sm:min-w-[220px]">
           Search
           <input
             value={query}
@@ -347,13 +347,13 @@ function RegisterDialog({
           });
         }}
       >
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
           <Field name="firstName" label="First name" />
           <Field name="lastName" label="Last name" />
         </div>
         <Field name="email" label="Email" type="email" />
         <Field name="mobile" label="Mobile" />
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field name="title" label="Title" />
           <Field name="gender" label="Gender" />
           <Field name="dateOfBirth" label="Date of birth" type="date" />
@@ -370,7 +370,7 @@ function RegisterDialog({
         <Field name="location" label="Location" />
         <Field name="nextOfKin" label="Next of kin" />
         <Field name="nextOfKinContact" label="Next of kin contact" />
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Field name="monthlyContribution" label="Monthly contribution" type="number" />
           <Field name="retirementAge" label="Retirement age" type="number" />
           <Field name="targetPot" label="Target pot" type="number" />

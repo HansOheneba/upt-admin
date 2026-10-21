@@ -336,7 +336,7 @@ export function CopilotView() {
                         );
                         if (activeId === conversation.id) setActiveId(null);
                       }}
-                      className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted opacity-0 hover:bg-[#F8F9FB] hover:text-navy group-hover:opacity-100 focus:opacity-100"
+                      className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-md text-muted hover:bg-[#F8F9FB] hover:text-navy md:opacity-0 md:group-hover:opacity-100 md:focus:opacity-100"
                     >
                       <Trash2 className="size-3.5" aria-hidden />
                     </button>
@@ -525,7 +525,7 @@ export function CopilotView() {
                   id="copilot-scope"
                   value={memberId}
                   onChange={(event) => setMemberId(event.target.value)}
-                  className="h-8 max-w-56 rounded-md border border-line bg-white px-2 text-sm text-navy outline-none focus:border-navy"
+                  className="h-8 min-w-0 max-w-full flex-1 rounded-md border border-line bg-white px-2 text-sm text-navy outline-none focus:border-navy sm:max-w-56 sm:flex-none"
                 >
                   <option value="all">Entire book</option>
                   {book.members.map((member) => (

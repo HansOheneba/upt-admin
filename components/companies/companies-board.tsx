@@ -158,7 +158,7 @@ export function CompaniesBoard() {
         <StatCard label="Active memberships" value={String(membershipCount)} hint="Employer memberships in this scope" />
       </div>
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <label className="flex min-w-[220px] flex-1 flex-col gap-1.5 text-sm font-medium text-navy">
+        <label className="flex w-full min-w-0 flex-1 flex-col gap-1.5 text-sm font-medium text-navy sm:min-w-[220px]">
           Search
           <input
             value={query}

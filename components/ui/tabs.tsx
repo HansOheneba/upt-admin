@@ -8,7 +8,7 @@ export function TabList({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
+    <div className="mb-5 flex gap-1 overflow-x-auto border-b border-line [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {tabs.map((tab) => {
         const selected = value === tab.id;
         return (

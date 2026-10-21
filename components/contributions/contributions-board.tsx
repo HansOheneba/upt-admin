@@ -154,7 +154,7 @@ export function ContributionsBoard() {
         {rangeInvalid ? "." : `, ${formatDate(from)} to ${formatDate(to)}.`}
       </p>
       <div className="flex flex-wrap items-end gap-3">
-        <label className="text-sm font-medium text-navy">
+        <label className="w-full text-sm font-medium text-navy sm:w-44">
           From
           <input
             type="date"
@@ -166,7 +166,7 @@ export function ContributionsBoard() {
             className={`${controlClass} mt-1`}
           />
         </label>
-        <label className="text-sm font-medium text-navy">
+        <label className="w-full text-sm font-medium text-navy sm:w-44">
           To
           <input
             type="date"
@@ -282,7 +282,7 @@ export function ContributionsBoard() {
                   status: <StatusBadge label="Unmatched" />,
                   match: canFinance ? (
                     <form
-                      className="flex min-w-64 gap-2"
+                      className="flex w-full min-w-0 flex-col gap-2 md:w-auto md:min-w-64 md:flex-row md:items-center"
                       onSubmit={(event) => {
                         event.preventDefault();
                         const membershipId = match[payment.id];
