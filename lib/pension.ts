@@ -1,7 +1,7 @@
 import type {
   Book,
   Contribution,
-  Member,
+  Membership,
   UnitPrice,
   Withdrawal,
 } from "@/lib/domain";
@@ -27,9 +27,13 @@ export function priceOn(prices: UnitPrice[], date: string) {
   return applicable[applicable.length - 1] ?? null;
 }
 
-export function memberContributions(book: Book, memberId: string) {
+export function pricesForScheme(book: Book, schemeId: string) {
+  return book.unitPrices.filter((price) => price.schemeId === schemeId);
+}
+
+export function membershipContributions(book: Book, membershipId: string) {
   return book.contributions
-    .filter((row) => row.memberId === memberId)
+    .filter((row) => row.membershipId === membershipId)
     .sort((a, b) => a.date.localeCompare(b.date) || a.postedAt.localeCompare(b.postedAt));
 }
 
@@ -46,10 +50,11 @@ export function potFor(units: number, price: UnitPrice | null) {
   return Math.round(units * price.price * 100) / 100;
 }
 
-export function memberPosition(book: Book, memberId: string) {
-  const price = currentUnitPrice(book.unitPrices);
-  const contributions = memberContributions(book, memberId);
-  const withdrawals = book.withdrawals.filter((row) => row.memberId === memberId);
+export function membershipPosition(book: Book, membershipId: string) {
+  const membership = book.memberships.find((item) => item.id === membershipId) ?? null;
+  const price = membership ? currentUnitPrice(pricesForScheme(book, membership.schemeId)) : null;
+  const contributions = membershipContributions(book, membershipId);
+  const withdrawals = book.withdrawals.filter((row) => row.membershipId === membershipId);
   const units = unitsHeld(contributions, withdrawals);
   const contributed = contributions.reduce((sum, row) => sum + row.amount, 0);
   const thisYear = contributions
@@ -70,24 +75,40 @@ export function memberPosition(book: Book, memberId: string) {
     contributions,
     withdrawals,
     openWithdrawal,
+    membership,
   };
+}
+
+export function personHoldings(book: Book, memberId: string) {
+  const rows = book.memberships
+    .filter((membership) => membership.memberId === memberId)
+    .map((membership) => ({
+      membership,
+      position: membershipPosition(book, membership.id),
+    }));
+  const known = rows
+    .map((row) => row.position.pot)
+    .filter((pot): pot is number => pot !== null);
+  const combinedPot =
+    known.length === 0 ? null : Math.round(known.reduce((sum, pot) => sum + pot, 0) * 100) / 100;
+  return { rows, combinedPot, gaps: rows.length - known.length };
 }
 
 export type MonthStatus = "received" | "partial" | "missing" | "closed";
 
 export function contributionMonthStatus(
-  member: Member,
+  membership: Pick<Membership, "id" | "status" | "effectiveFrom" | "monthlyContribution">,
   contributions: Contribution[],
   month: string,
 ): MonthStatus {
-  if (member.status === "closed") return "closed";
-  if (member.memberSince.slice(0, 7) > month) return "closed";
+  if (membership.status === "closed") return "closed";
+  if (membership.effectiveFrom.slice(0, 7) > month) return "closed";
   const received = contributions
-    .filter((row) => row.memberId === member.id && row.date.startsWith(month))
+    .filter((row) => row.membershipId === membership.id && row.date.startsWith(month))
     .reduce((sum, row) => sum + row.amount, 0);
-  if (member.monthlyContribution <= 0) return received > 0 ? "received" : "missing";
+  if (membership.monthlyContribution <= 0) return received > 0 ? "received" : "missing";
   if (received <= 0) return "missing";
-  if (received + 0.001 < member.monthlyContribution) return "partial";
+  if (received + 0.001 < membership.monthlyContribution) return "partial";
   return "received";
 }
 
@@ -100,6 +121,18 @@ export function openWithdrawal(book: Book, memberId: string) {
     book.withdrawals.find(
       (row) =>
         row.memberId === memberId &&
+        (row.status === "received" ||
+          row.status === "checking" ||
+          row.status === "approved"),
+    ) ?? null
+  );
+}
+
+export function openMembershipWithdrawal(book: Book, membershipId: string) {
+  return (
+    book.withdrawals.find(
+      (row) =>
+        row.membershipId === membershipId &&
         (row.status === "received" ||
           row.status === "checking" ||
           row.status === "approved"),
@@ -179,14 +212,50 @@ export function insuranceFlag(renewalDate: string, active: boolean, today = toda
   return null;
 }
 
-export function totalUnitsInIssue(book: Book) {
-  return Math.round(
-    book.members.reduce((sum, member) => sum + memberPosition(book, member.id).units, 0) * 100,
-  ) / 100;
+export function schemeValue(book: Book, memberships: Membership[]) {
+  let total = 0;
+  let gaps = 0;
+  let units = 0;
+  let valued = 0;
+  for (const membership of memberships) {
+    const position = membershipPosition(book, membership.id);
+    units += position.units;
+    if (position.pot === null) gaps += 1;
+    else {
+      valued += 1;
+      total += position.pot;
+    }
+  }
+  return {
+    units: Math.round(units * 100) / 100,
+    total: valued === 0 ? null : Math.round(total * 100) / 100,
+    gaps,
+  };
 }
 
-export function totalPot(book: Book) {
-  const price = currentUnitPrice(book.unitPrices);
-  if (!price) return null;
-  return potFor(totalUnitsInIssue(book), price);
+export function periodFigures(book: Book, memberships: Membership[], month: string) {
+  const ids = new Set(memberships.map((membership) => membership.id));
+  const rows = book.contributions.filter(
+    (row) => ids.has(row.membershipId) && row.date.startsWith(month),
+  );
+  const contributions = Math.round(rows.reduce((sum, row) => sum + row.amount, 0) * 100) / 100;
+  const payments = rows.filter((row) => row.amount > 0 && !row.reversalOf);
+  const paymentTotal = payments.reduce((sum, row) => sum + row.amount, 0);
+  const averagePayment =
+    payments.length === 0 ? null : Math.round((paymentTotal / payments.length) * 100) / 100;
+  const contributors = new Set(payments.map((row) => row.membershipId));
+  const averageMember =
+    contributors.size === 0 ? null : Math.round((contributions / contributors.size) * 100) / 100;
+  const distributions =
+    Math.round(
+      book.withdrawals
+        .filter(
+          (row) =>
+            ids.has(row.membershipId) &&
+            row.status === "paid" &&
+            (row.paidAt ?? "").startsWith(month),
+        )
+        .reduce((sum, row) => sum + row.amount, 0) * 100,
+    ) / 100;
+  return { contributions, distributions, averagePayment, averageMember };
 }

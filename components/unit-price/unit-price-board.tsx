@@ -8,21 +8,33 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { controlClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { formatDate, formatDateTime, todayIso } from "@/lib/format";
-import { currentUnitPrice, sortedPrices } from "@/lib/pension";
+import { currentUnitPrice, pricesForScheme, sortedPrices } from "@/lib/pension";
 
 export function UnitPriceBoard() {
-  const { book, setUnitPrice, canFinance } = useRecords();
-  const current = currentUnitPrice(book.unitPrices);
-  const history = [...sortedPrices(book.unitPrices)].reverse();
+  const { book, setUnitPrice, canFinance, schemeId, schemes } = useRecords();
+  const scheme = schemes.find((item) => item.id === schemeId) ?? null;
+  const series = scheme ? pricesForScheme(book, scheme.id) : [];
+  const current = currentUnitPrice(series);
+  const history = [...sortedPrices(series)].reverse();
   const setter = (id: string) => book.staff.find((person) => person.id === id)?.name ?? "Finance";
 
   return (
     <div>
       <PageHeader
         title="Fund settings"
-        description="The unit price used for contributions and for withdrawals paid that day. A new price is added. It does not replace history."
+        description={
+          scheme
+            ? `The unit price for ${scheme.name}. A new price is added. It does not replace history.`
+            : "Choose one scheme before setting a unit price."
+        }
       />
-      {current ? (
+      {!scheme ? (
+        <EmptyState
+          icon={BadgeCheck}
+          title="Choose a scheme"
+          description="Unit prices belong to one scheme. Select it in the scheme menu."
+        />
+      ) : current ? (
         <article className="rounded-xl border border-line bg-card px-5 py-4">
           <p className="text-xs font-medium text-muted">Current price</p>
           <p className="mt-2 text-2xl font-medium text-navy tabular-nums">{current.price.toFixed(3)}</p>
@@ -37,13 +49,14 @@ export function UnitPriceBoard() {
           description="Every member pot stays unavailable until finance sets a price."
         />
       )}
-      {canFinance ? (
+      {canFinance && scheme ? (
         <form
           className="mt-4 flex flex-wrap items-end gap-3"
           onSubmit={(event) => {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
             const ok = setUnitPrice({
+              schemeId: scheme.id,
               date: String(form.get("date") ?? ""),
               price: Number(form.get("price") ?? 0),
             });

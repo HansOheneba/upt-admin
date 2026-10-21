@@ -183,7 +183,7 @@ export function TasksBoard() {
   const { book, members, staffId, setStaffId, memberId, setMemberId } = useWorkFilters();
   const { completeTask, addTask, canAdviseMember, staff } = useRecords();
   const canAdd = !!staff?.roles.some(
-    (role) => role === "relationship_manager" || role === "supervisor",
+    (role) => role === "relationship_manager" || role === "team_lead",
   );
   const overdueOnly = params.get("overdue") === "1";
   const [view, setView] = useState<"mine" | "overdue" | "today" | "upcoming" | "completed" | "team">(
@@ -301,7 +301,7 @@ export function TasksBoard() {
 
 export function MessagesBoard() {
   const { book, members, staffId, setStaffId, memberId, setMemberId } = useWorkFilters();
-  const { sendMessage, canCorrect, canAdviseMember } = useRecords();
+  const { sendMessage, canMaintain, canAdviseMember } = useRecords();
   const rows = [...book.messages].reverse().filter((row) => {
     if (!members.some((member) => member.id === row.memberId)) return false;
     if (staffId !== "all" && row.staffId !== staffId) return false;
@@ -341,7 +341,7 @@ export function MessagesBoard() {
                   {waiting ? " · not answered" : ""}
                 </p>
                 <p className="mt-1">{row.body}</p>
-                {waiting && member && (canCorrect || canAdviseMember(member)) ? (
+                {waiting && member && (canMaintain(member.id) || canAdviseMember(member)) ? (
                   <form
                     className="mt-3 flex gap-2"
                     onSubmit={(event) => {

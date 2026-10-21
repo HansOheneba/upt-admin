@@ -14,7 +14,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { WITHDRAWAL_LABEL, memberName, type WithdrawalStatus } from "@/lib/domain";
 import { daysSince, formatDate, formatDateTime, formatUnits, ghs, todayIso } from "@/lib/format";
-import { destinationLabel, memberPosition } from "@/lib/pension";
+import { destinationLabel, membershipPosition } from "@/lib/pension";
 
 export function WithdrawalsBoard() {
   const params = useSearchParams();
@@ -26,11 +26,11 @@ export function WithdrawalsBoard() {
   );
   const [selected, setSelected] = useState<string | null>(params.get("id"));
   const visible = useMemo(
-    () => new Set(records.members.map((member) => member.id)),
-    [records.members],
+    () => new Set(records.memberships.map((membership) => membership.id)),
+    [records.memberships],
   );
   const rows = records.book.withdrawals.filter((row) => {
-    if (!visible.has(row.memberId)) return false;
+    if (!visible.has(row.membershipId)) return false;
     if (stage !== "all") return row.status === stage;
     if (caseView === "open") return row.status === "received" || row.status === "checking" || row.status === "approved";
     if (caseView === "completed") return row.status === "paid";
@@ -71,6 +71,7 @@ export function WithdrawalsBoard() {
           ]}
           rows={rows.map((row) => {
             const member = records.book.members.find((item) => item.id === row.memberId);
+            const membership = records.book.memberships.find((item) => item.id === row.membershipId);
             return {
               id: row.id,
               cells: {
@@ -82,7 +83,10 @@ export function WithdrawalsBoard() {
                   >
                     {member ? memberName(member) : row.name}
                     <span className="block text-xs font-normal text-muted">
-                      {member?.memberNumber}
+                      {records.schemeId === "all"
+                        ? `${records.book.schemes.find((scheme) => scheme.id === membership?.schemeId)?.name ?? "Scheme"} · `
+                        : ""}
+                      {membership?.membershipNumber}
                     </span>
                   </button>
                 ),
@@ -132,7 +136,7 @@ function WithdrawalDetail({ id, onClose }: { id: string; onClose: () => void }) 
   const row = records.book.withdrawals.find((item) => item.id === id);
   if (!row) return null;
   const member = records.book.members.find((item) => item.id === row.memberId);
-  const position = member ? memberPosition(records.book, member.id) : null;
+  const position = membershipPosition(records.book, row.membershipId);
   const earlier = records.book.withdrawals.filter(
     (item) => item.memberId === row.memberId && item.id !== row.id,
   );
@@ -163,11 +167,6 @@ function WithdrawalDetail({ id, onClose }: { id: string; onClose: () => void }) 
             <Item label="Next of kin" value={row.nextOfKin} />
             <Item label="Next of kin contact" value={row.nextOfKinContact} />
           </dl>
-          <img
-            src={row.signatureDataUrl}
-            alt="Signature"
-            className="mt-3 h-16 rounded border border-line bg-white"
-          />
           {position ? (
             <p className="mt-3 text-sm">
               Pot {position.pot === null ? "unavailable" : ghs(position.pot)} · {formatUnits(position.units)} units
@@ -225,6 +224,24 @@ function Actions({
 
   return (
     <div className="flex flex-col gap-3">
+      {records.staff?.roles.includes("relationship_manager") && status === "received" ? (
+        <div className="flex flex-col gap-2">
+          <Button variant="secondary" onClick={() => records.markWithdrawalReady(rowId)}>
+            Mark ready for review
+          </Button>
+          <form
+            className="flex flex-col gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              records.escalateWithdrawal(rowId, String(form.get("escalation") ?? ""));
+            }}
+          >
+            <textarea name="escalation" required placeholder="Note for your team lead" className={`${controlClass} h-20 py-2`} />
+            <Button type="submit" variant="secondary">Escalate to team lead</Button>
+          </form>
+        </div>
+      ) : null}
       {records.canReview && status === "received" ? (
         <Button onClick={() => records.startReview(rowId)}>Move to under review</Button>
       ) : null}

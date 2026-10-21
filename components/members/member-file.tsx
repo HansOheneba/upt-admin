@@ -27,7 +27,7 @@ import {
   currentMonth,
   destinationLabel,
   insuranceFlag,
-  memberPosition,
+  personHoldings,
 } from "@/lib/pension";
 
 export function MemberFile({ id }: { id: string }) {
@@ -53,11 +53,29 @@ export function MemberFile({ id }: { id: string }) {
     );
   }
 
-  const position = memberPosition(records.book, member.id);
-  const monthStatus = contributionMonthStatus(member, records.book.contributions, currentMonth());
+  const visibleIds = new Set(records.memberships.map((membership) => membership.id));
+  const holdings = personHoldings(records.book, member.id).rows.filter((row) =>
+    visibleIds.has(row.membership.id),
+  );
+  const combinedPot = holdings
+    .map((row) => row.position.pot)
+    .filter((pot): pot is number => pot !== null);
+  const combined =
+    combinedPot.length === 0
+      ? null
+      : Math.round(combinedPot.reduce((sum, pot) => sum + pot, 0) * 100) / 100;
+  const schemeName = (schemeId: string) =>
+    records.book.schemes.find((scheme) => scheme.id === schemeId)?.name ?? "Scheme";
+  const maintain = records.canMaintain(member.id);
+  const attention = holdings.flatMap((row) => {
+    const status = contributionMonthStatus(row.membership, records.book.contributions, currentMonth());
+    return status === "missing" || status === "partial" ? [{ row, status }] : [];
+  });
+  const openWithdrawals = holdings.flatMap((row) =>
+    row.position.openWithdrawal ? [row.position.openWithdrawal] : [],
+  );
   const staffName = (staffId: string | null) =>
     records.book.staff.find((person) => person.id === staffId)?.name ?? "Staff";
-  const manager = records.book.staff.find((person) => person.id === member.relationshipManagerId);
   const openRequests = records.book.requests.filter(
     (row) => row.memberId === member.id && row.status === "open",
   ).length;
@@ -72,14 +90,23 @@ export function MemberFile({ id }: { id: string }) {
         <div>
           <h1 className="text-[28px] leading-tight font-semibold text-navy">{memberName(member)}</h1>
           <p className="mt-1 text-sm text-muted">
-            {member.memberNumber} · {member.scheme} · {manager?.name ?? "No relationship manager"}
+            {holdings.length === 0
+              ? "No membership in this view"
+              : holdings
+                  .map(
+                    (row) =>
+                      `${row.membership.membershipNumber} · ${schemeName(row.membership.schemeId)}`,
+                  )
+                  .join("  ·  ")}
           </p>
           <div className="mt-2">
-            <StatusBadge label={member.status === "active" ? "Active" : "Closed"} />
+            <StatusBadge
+              label={holdings.some((row) => row.membership.status === "active") ? "Active" : "Closed"}
+            />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {records.canCorrect ? (
+          {maintain ? (
             <Button onClick={() => setEditing(true)}>Correct member</Button>
           ) : records.canFinance ? (
             <Button onClick={() => setContributing(true)}>Add contribution</Button>
@@ -87,22 +114,10 @@ export function MemberFile({ id }: { id: string }) {
           <details className="relative">
             <summary className={`${buttonClass("secondary")} cursor-pointer list-none`}>Actions</summary>
             <div className="absolute right-0 z-20 mt-2 flex w-52 flex-col gap-2 rounded-[10px] border border-line bg-card p-2 shadow-sm">
-              {records.canCorrect && records.canFinance ? (
+              {maintain && records.canFinance ? (
                 <Button variant="secondary" onClick={() => setContributing(true)}>Add contribution</Button>
               ) : null}
               <StatementActions member={member} />
-              {records.canCorrect && member.status === "active" ? (
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    if (window.confirm("Close this account? The history stays on the file.")) {
-                      records.closeMember(member.id);
-                    }
-                  }}
-                >
-                  Close account
-                </Button>
-              ) : null}
             </div>
           </details>
         </div>
@@ -110,30 +125,24 @@ export function MemberFile({ id }: { id: string }) {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Summary
-          label="Current pension value"
-          value={position.pot === null ? "Unavailable" : ghs(position.pot)}
-          hint={
-            position.price
-              ? `Units × unit price ${position.price.price.toFixed(3)} on ${formatDate(position.price.date)}`
-              : "No unit price is set"
-          }
-        />
-        <Summary label="Units held" value={formatUnits(position.units)} hint="Credited units less units taken on paid withdrawals" />
-        <Summary
-          label="Latest contribution"
-          value={position.latest ? ghs(position.latest.amount) : "None"}
-          hint={position.latest ? formatDate(position.latest.date) : "No contribution posted"}
+          label="Combined pension value"
+          value={combined === null ? "Unavailable" : ghs(combined)}
+          hint="Each scheme is valued on its own unit price. The balances are separate."
         />
         <Summary
-          label="Open items"
-          value={String((position.openWithdrawal ? 1 : 0) + openRequests)}
-          hint={
-            position.openWithdrawal
-              ? `Withdrawal ${WITHDRAWAL_LABEL[position.openWithdrawal.status]}${openRequests ? ` · ${openRequests} open request${openRequests === 1 ? "" : "s"}` : ""}`
-              : openRequests
-                ? `${openRequests} open request${openRequests === 1 ? "" : "s"}`
-                : "No open withdrawal or request"
-          }
+          label="Memberships"
+          value={String(holdings.length)}
+          hint={holdings.map((row) => schemeName(row.membership.schemeId)).join(", ") || "None in this view"}
+        />
+        <Summary
+          label="Open withdrawals"
+          value={String(openWithdrawals.length)}
+          hint={openWithdrawals[0] ? WITHDRAWAL_LABEL[openWithdrawals[0].status] : "None"}
+        />
+        <Summary
+          label="Open requests"
+          value={String(openRequests)}
+          hint={openRequests ? "Waiting for a reply" : "No open request"}
         />
       </div>
 
@@ -165,68 +174,74 @@ export function MemberFile({ id }: { id: string }) {
           <Fact label="Location" value={member.location} />
           <Fact label="Next of kin" value={member.nextOfKin || "Not stated"} />
           <Fact label="Next of kin contact" value={member.nextOfKinContact || "Not stated"} />
-          <Fact label="Member number" value={member.memberNumber} />
-          <Fact label="Scheme" value={member.scheme} />
-          <Fact label="Member since" value={formatDate(member.memberSince)} />
-          <Fact label="Account" value={member.status === "active" ? "Active" : "Closed"} />
         </dl>
       </Section>
       ) : null}
 
-      {tab === "overview" ? (
-      <Section title="Pension">
-        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Fact label="Pot value" value={position.pot === null ? "Unavailable" : ghs(position.pot)} />
-          <Fact label="Units held" value={formatUnits(position.units)} />
-          <Fact
-            label="Unit price"
-            value={
-              position.price
-                ? `${position.price.price.toFixed(3)} · set ${formatDate(position.price.date)}`
-                : "Not set. The pot cannot be shown."
-            }
-          />
-          <Fact label="Monthly contribution" value={ghs(member.monthlyContribution)} />
-          <Fact label="Retirement age" value={String(member.retirementAge)} />
-          <Fact label="Target pot" value={ghs(member.targetPot)} />
-          <Fact label="Contributions this year" value={ghs(position.thisYear)} />
-          <Fact label="Lifetime contributions" value={ghs(position.contributed)} />
-          <Fact
-            label="Latest contribution"
-            value={
-              position.latest
-                ? `${ghs(position.latest.amount)} · ${formatDate(position.latest.date)}`
-                : "None"
-            }
-          />
-          <Fact
-            label="Open withdrawal"
-            value={
-              position.openWithdrawal
-                ? `${ghs(position.openWithdrawal.amount)} · ${WITHDRAWAL_LABEL[position.openWithdrawal.status]}`
-                : "None"
-            }
-          />
-          <Fact
-            label="This month"
-            value={monthStatus === "closed" ? "Closed" : monthStatus[0].toUpperCase() + monthStatus.slice(1)}
-          />
-        </dl>
-      </Section>
-      ) : null}
+      {tab === "overview"
+        ? holdings.map(({ membership, position }) => (
+            <Section
+              key={membership.id}
+              title={schemeName(membership.schemeId)}
+              description={`${membership.membershipNumber} · ${membership.status === "active" ? "Active" : "Closed"} · since ${formatDate(membership.effectiveFrom)}`}
+            >
+              <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Fact label="Pot value" value={position.pot === null ? "Unavailable" : ghs(position.pot)} />
+                <Fact label="Units held" value={formatUnits(position.units)} />
+                <Fact
+                  label="Unit price"
+                  value={
+                    position.price
+                      ? `${position.price.price.toFixed(3)} · set ${formatDate(position.price.date)}`
+                      : "Not set. The pot cannot be shown."
+                  }
+                />
+                <Fact label="Monthly contribution" value={ghs(membership.monthlyContribution)} />
+                <Fact label="Retirement age" value={String(membership.retirementAge)} />
+                <Fact label="Target pot" value={ghs(membership.targetPot)} />
+                <Fact label="Contributions this year" value={ghs(position.thisYear)} />
+                <Fact label="Lifetime contributions" value={ghs(position.contributed)} />
+                <Fact
+                  label="Relationship manager"
+                  value={
+                    records.book.staff.find((person) => person.id === membership.relationshipManagerId)?.name ??
+                    "Unassigned"
+                  }
+                />
+              </dl>
+              {maintain && membership.status === "active" ? (
+                <Button
+                  className="mt-4"
+                  variant="secondary"
+                  onClick={() => {
+                    if (window.confirm("Close this membership? Other memberships stay open.")) {
+                      records.closeMembership(membership.id);
+                    }
+                  }}
+                >
+                  Close membership
+                </Button>
+              ) : null}
+            </Section>
+          ))
+        : null}
 
-      {tab === "overview" && (monthStatus === "missing" || monthStatus === "partial" || position.openWithdrawal || flags.length > 0) ? (
+      {tab === "overview" && (attention.length > 0 || openWithdrawals.length > 0 || flags.length > 0) ? (
         <Section title="Items requiring attention">
           <ul className="flex flex-col gap-2 text-sm">
-            {monthStatus === "missing" ? <li>No contribution posted for {currentMonth()}.</li> : null}
-            {monthStatus === "partial" ? (
-              <li>This month&apos;s contribution is short of {ghs(member.monthlyContribution)}.</li>
-            ) : null}
-            {position.openWithdrawal ? (
-              <li>
-                Withdrawal of {ghs(position.openWithdrawal.amount)} is {WITHDRAWAL_LABEL[position.openWithdrawal.status]}.
+            {attention.map(({ row, status }) => (
+              <li key={row.membership.id}>
+                {schemeName(row.membership.schemeId)}:{" "}
+                {status === "missing"
+                  ? `no contribution posted for ${currentMonth()}.`
+                  : `this month is short of ${ghs(row.membership.monthlyContribution)}.`}
               </li>
-            ) : null}
+            ))}
+            {openWithdrawals.map((row) => (
+              <li key={row.id}>
+                Withdrawal of {ghs(row.amount)} is {WITHDRAWAL_LABEL[row.status]}.
+              </li>
+            ))}
             {flags.map(({ row, flag }) => (
               <li key={row.id}>{flag}: {row.policyName}, renewal {formatDate(row.renewalDate)}.</li>
             ))}
@@ -243,8 +258,13 @@ export function MemberFile({ id }: { id: string }) {
           ) : null
         }
       >
+        {holdings.map(({ membership, position }) => (
+          <div key={membership.id} className="mb-6">
+            <h3 className="mb-2 text-sm font-medium text-navy">
+              {schemeName(membership.schemeId)} · {membership.membershipNumber}
+            </h3>
         <Ledger
-          empty="No contributions posted to this member."
+          empty="No contributions posted to this membership."
           headers={["Date", "Amount", "Unit price", "Units", "Channel", "Posted by", ""]}
           rows={position.contributions.map((row) => [
             formatDate(row.date),
@@ -269,20 +289,24 @@ export function MemberFile({ id }: { id: string }) {
             ),
           ])}
         />
+          </div>
+        ))}
       </Section>
       ) : null}
 
       {tab === "withdrawals" ? (
       <Section title="Withdrawals">
-        {position.withdrawals.length === 0 ? (
+        {holdings.every((row) => row.position.withdrawals.length === 0) ? (
           <p className="text-sm text-muted">No withdrawals on this file.</p>
         ) : (
           <div className="flex flex-col gap-4">
-            {position.withdrawals.map((row) => (
+            {holdings.flatMap((holding) => holding.position.withdrawals.map((row) => (
               <article key={row.id} className="rounded-lg border border-line p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-medium text-navy">{ghs(row.amount)} · {row.reason}</p>
+                    <p className="font-medium text-navy">
+                      {schemeName(holding.membership.schemeId)} · {ghs(row.amount)} · {row.reason}
+                    </p>
                     <p className="mt-1 text-sm text-muted">
                       Submitted {formatDateTime(row.submittedAt)} · {destinationLabel(row.destinationType, row.destination)} · waiting {daysSince(row.submittedAt)} days
                     </p>
@@ -297,9 +321,6 @@ export function MemberFile({ id }: { id: string }) {
                   <Fact label="Next of kin" value={row.nextOfKin} />
                   <Fact label="Next of kin contact" value={row.nextOfKinContact} />
                 </dl>
-                {row.signatureDataUrl ? (
-                  <img src={row.signatureDataUrl} alt="Signature on the withdrawal" className="mt-3 h-16 rounded border border-line bg-white" />
-                ) : null}
                 {row.declineReason ? <p className="mt-2 text-sm">Reason: {row.declineReason}</p> : null}
                 <ul className="mt-3 text-sm text-muted">
                   {row.events.map((event, index) => (
@@ -310,7 +331,7 @@ export function MemberFile({ id }: { id: string }) {
                   ))}
                 </ul>
               </article>
-            ))}
+            )))}
           </div>
         )}
       </Section>
@@ -410,13 +431,23 @@ export function MemberFile({ id }: { id: string }) {
             event.preventDefault();
             const form = new FormData(event.currentTarget);
             const ok = records.addContribution({
-              memberId: member.id,
+              membershipId: String(form.get("membershipId") ?? ""),
               date: String(form.get("date") ?? ""),
               amount: Number(form.get("amount") ?? 0),
             });
             if (ok) setContributing(false);
           }}
         >
+          <label className="flex flex-col gap-1.5 text-sm font-medium text-navy">
+            Membership
+            <select name="membershipId" required className={controlClass} defaultValue={holdings[0]?.membership.id}>
+              {holdings.map((row) => (
+                <option key={row.membership.id} value={row.membership.id}>
+                  {schemeName(row.membership.schemeId)} · {row.membership.membershipNumber}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="flex flex-col gap-1.5 text-sm font-medium text-navy">
             Date received
             <input name="date" type="date" required defaultValue={todayIso()} className={controlClass} />
@@ -425,7 +456,7 @@ export function MemberFile({ id }: { id: string }) {
             Amount (GHS)
             <input name="amount" type="number" min="0.01" step="0.01" required className={controlClass} />
           </label>
-          <p className="text-sm text-muted">Posted at the unit price for that date, through MTN Mobile Money.</p>
+          <p className="text-sm text-muted">Posted at that membership's unit price for the date, through MTN Mobile Money.</p>
           <Button type="submit">Post contribution</Button>
         </form>
       </Modal>
@@ -663,7 +694,7 @@ function Relationship({
             {row.body}
           </p>
         ))}
-        {records.canCorrect || advise ? (
+        {advise ? (
           <form
             className="mt-2 flex gap-2"
             onSubmit={(event) => {
@@ -689,7 +720,7 @@ function Relationship({
             ))}
           </ul>
         )}
-        {records.canCorrect || advise ? (
+        {advise ? (
           <form
             className="mt-3 flex flex-wrap items-end gap-2"
             onSubmit={(event) => {
@@ -808,9 +839,6 @@ function EditIdentity({
             location: String(form.get("location") ?? ""),
             nextOfKin: String(form.get("nextOfKin") ?? ""),
             nextOfKinContact: String(form.get("nextOfKinContact") ?? ""),
-            monthlyContribution: Number(form.get("monthlyContribution") ?? 0),
-            retirementAge: Number(form.get("retirementAge") ?? 60),
-            targetPot: Number(form.get("targetPot") ?? 0),
           });
         }}
       >
@@ -829,9 +857,6 @@ function EditIdentity({
         <Text name="location" label="Location" defaultValue={member.location} />
         <Text name="nextOfKin" label="Next of kin" defaultValue={member.nextOfKin} />
         <Text name="nextOfKinContact" label="Next of kin contact" defaultValue={member.nextOfKinContact} />
-        <Text name="monthlyContribution" label="Monthly contribution" type="number" defaultValue={String(member.monthlyContribution)} />
-        <Text name="retirementAge" label="Retirement age" type="number" defaultValue={String(member.retirementAge)} />
-        <Text name="targetPot" label="Target pot" type="number" defaultValue={String(member.targetPot)} />
         <Button type="submit">Save correction</Button>
       </form>
     </Modal>

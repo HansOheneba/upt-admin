@@ -20,7 +20,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`${buttonClass(variant)} ${className}`}
+      className={`${buttonClass(variant)} disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
       {...props}
     />
   );

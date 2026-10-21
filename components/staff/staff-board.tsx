@@ -12,16 +12,18 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { ROLE_LABEL, type Role } from "@/lib/domain";
 
 const ROLES: Role[] = [
-  "member_services",
+  "management",
+  "team_lead",
+  "relationship_manager",
   "finance",
   "review",
-  "relationship_manager",
-  "supervisor",
 ];
 
 export function StaffBoard() {
-  const { book, addStaff, removeStaff, staff } = useRecords();
-  const [roles, setRoles] = useState<Role[]>(["member_services"]);
+  const { book, addStaff, removeStaff, setReportingLine, staff } = useRecords();
+  const [roles, setRoles] = useState<Role[]>(["relationship_manager"]);
+  const [leadId, setLeadId] = useState("");
+  const leads = book.staff.filter((person) => person.active && person.roles.includes("team_lead"));
   const active = book.staff.filter((person) => person.active);
 
   return (
@@ -42,18 +44,38 @@ export function StaffBoard() {
             <li key={person.id} className="flex items-center justify-between gap-3 px-5 py-3">
               <div>
                 <p className="text-sm font-medium text-navy">{person.name}</p>
-                <p className="text-xs text-muted">{person.email}</p>
+                <p className="text-xs text-muted">
+                  {person.email}
+                  {person.leadId
+                    ? ` · ${book.staff.find((lead) => lead.id === person.leadId)?.name ?? "Team lead"}`
+                    : ""}
+                </p>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {person.roles.map((role) => (
                     <StatusBadge key={role} label={ROLE_LABEL[role]} />
                   ))}
                 </div>
               </div>
-              {person.id !== staff?.id ? (
-                <Button variant="secondary" onClick={() => removeStaff(person.id)}>
-                  Remove access
-                </Button>
-              ) : null}
+              <div className="flex items-center gap-2">
+                {person.roles.includes("relationship_manager") ? (
+                  <select
+                    value={person.leadId ?? ""}
+                    onChange={(event) => setReportingLine(person.id, event.target.value)}
+                    className={controlClass}
+                    aria-label={`Team lead for ${person.name}`}
+                  >
+                    <option value="">Team lead</option>
+                    {leads.map((lead) => (
+                      <option key={lead.id} value={lead.id}>{lead.name}</option>
+                    ))}
+                  </select>
+                ) : null}
+                {person.id !== staff?.id ? (
+                  <Button variant="secondary" onClick={() => removeStaff(person.id)}>
+                    Remove access
+                  </Button>
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>
@@ -67,6 +89,7 @@ export function StaffBoard() {
             name: String(form.get("name") ?? ""),
             email: String(form.get("email") ?? ""),
             roles,
+            leadId,
           });
           if (ok) event.currentTarget.reset();
         }}
@@ -99,6 +122,22 @@ export function StaffBoard() {
             </label>
           ))}
         </fieldset>
+        {roles.includes("relationship_manager") ? (
+          <label className="text-sm font-medium text-navy">
+            Team lead
+            <select
+              value={leadId}
+              onChange={(event) => setLeadId(event.target.value)}
+              required
+              className={`${controlClass} mt-1`}
+            >
+              <option value="">Choose a team lead</option>
+              {leads.map((lead) => (
+                <option key={lead.id} value={lead.id}>{lead.name}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <Button type="submit">Add staff</Button>
       </form>
     </div>

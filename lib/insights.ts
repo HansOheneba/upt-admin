@@ -5,8 +5,21 @@ import {
   contributionMonthStatus,
   currentMonth,
   insuranceFlag,
-  memberPosition,
+  personHoldings,
 } from "@/lib/pension";
+
+function leadMembership(book: Book, memberId: string) {
+  const rows = book.memberships.filter((membership) => membership.memberId === memberId);
+  return rows.find((membership) => membership.status === "active") ?? rows[0] ?? null;
+}
+
+function insightPosition(book: Book, memberId: string) {
+  const holdings = personHoldings(book, memberId);
+  return {
+    pot: holdings.combinedPot,
+    openWithdrawal: holdings.rows.find((row) => row.position.openWithdrawal)?.position.openWithdrawal ?? null,
+  };
+}
 
 export type ShareRow = {
   label: string;
@@ -88,9 +101,11 @@ export function buildInsights(
   today = todayIso(),
 ): Insights {
   const month = currentMonth(new Date(`${today}T00:00:00`));
-  const active = members.filter((member) => member.status === "active");
-  const closed = members.filter((member) => member.status === "closed");
-  const positions = new Map(active.map((member) => [member.id, memberPosition(book, member.id)]));
+  const active = members.filter((member) =>
+    book.memberships.some((membership) => membership.memberId === member.id && membership.status === "active"),
+  );
+  const closed = members.filter((member) => !active.some((item) => item.id === member.id));
+  const positions = new Map(active.map((member) => [member.id, insightPosition(book, member.id)]));
   const pots = active.map((member) => positions.get(member.id)?.pot ?? null);
   const knownPots = pots.filter((pot): pot is number => pot !== null);
   const combinedPot =
@@ -117,8 +132,10 @@ export function buildInsights(
   let monthExpected = 0;
   let monthReceived = 0;
   for (const member of active) {
-    monthExpected += member.monthlyContribution;
-    const status = contributionMonthStatus(member, book.contributions, month);
+    const membership = leadMembership(book, member.id);
+    if (!membership) continue;
+    monthExpected += membership.monthlyContribution;
+    const status = contributionMonthStatus(membership, book.contributions, month);
     if (status === "received" || status === "partial" || status === "missing") {
       contribution[status] += 1;
     }
@@ -147,8 +164,8 @@ export function buildInsights(
       id: member.id,
       name: memberName(member),
       pot: positions.get(member.id)?.pot ?? null,
-      target: member.targetPot,
-      years: yearsUntil(member, today),
+      target: leadMembership(book, member.id)?.targetPot ?? 0,
+      years: yearsUntil(member, leadMembership(book, member.id)?.retirementAge ?? 60, today),
     }))
     .sort((a, b) => {
       const aShare = a.pot === null || a.target <= 0 ? 1 : a.pot / a.target;
@@ -190,7 +207,7 @@ export function buildInsights(
     contribution,
     openWithdrawals,
     planning,
-    activeWithoutManager: active.filter((member) => !member.relationshipManagerId).length,
+    activeWithoutManager: active.filter((member) => !leadMembership(book, member.id)?.relationshipManagerId).length,
   });
 
   return {
@@ -225,13 +242,13 @@ function groupShares(rows: { label: string; amount: number }[]): ShareRow[] {
   return [...grouped.values()].sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label));
 }
 
-function yearsUntil(member: Member, today: string) {
+function yearsUntil(member: Member, retirementAge: number, today: string) {
   const birth = new Date(`${member.dateOfBirth}T00:00:00`);
   const now = new Date(`${today}T00:00:00`);
   let age = now.getFullYear() - birth.getFullYear();
   const month = now.getMonth() - birth.getMonth();
   if (month < 0 || (month === 0 && now.getDate() < birth.getDate())) age -= 1;
-  return member.retirementAge - age;
+  return retirementAge - age;
 }
 
 function hasPicture(book: Book, memberId: string) {
@@ -343,7 +360,7 @@ function planningFor(
 function attentionFor(
   book: Book,
   active: Member[],
-  positions: Map<string, ReturnType<typeof memberPosition>>,
+  positions: Map<string, ReturnType<typeof insightPosition>>,
   adviseIds: Set<string>,
   planning: PlanningInsights | null,
   month: string,
@@ -363,19 +380,22 @@ function attentionFor(
       reasons.push(`Open withdrawal of ${ghs(open.amount)} for ${open.reason.toLowerCase()}.`);
     }
 
-    const status = contributionMonthStatus(member, book.contributions, month);
+    const membership = leadMembership(book, member.id);
+    const status = membership
+      ? contributionMonthStatus(membership, book.contributions, month)
+      : "missing";
     const received = book.contributions
       .filter((row) => row.memberId === member.id && row.date.startsWith(month))
       .reduce((sum, row) => sum + row.amount, 0);
     if (status === "missing") {
-      reasons.push(`No contribution this month. Monthly amount is ${ghs(member.monthlyContribution)}.`);
+      reasons.push(`No contribution this month. Monthly amount is ${ghs(membership?.monthlyContribution ?? 0)}.`);
     } else if (status === "partial") {
       reasons.push(
-        `This month is ${ghs(received)} of the monthly amount ${ghs(member.monthlyContribution)}.`,
+        `This month is ${ghs(received)} of the monthly amount ${ghs(membership?.monthlyContribution ?? 0)}.`,
       );
     }
 
-    if (!member.relationshipManagerId) reasons.push("No relationship manager.");
+    if (!membership?.relationshipManagerId) reasons.push("No relationship manager.");
 
     const openRequests = book.requests.filter(
       (row) => row.memberId === member.id && row.status === "open",

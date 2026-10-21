@@ -19,11 +19,11 @@ export function RequestsBoard() {
   const records = useRecords();
   const [openOnly, setOpenOnly] = useState(params.get("status") !== "all");
   const [selected, setSelected] = useState<string | null>(null);
-  const visible = new Set(records.members.map((member) => member.id));
+  const visible = new Set(records.memberships.map((membership) => membership.id));
   const rows = records.book.requests.filter(
-    (row) => visible.has(row.memberId) && (!openOnly || row.status === "open"),
+    (row) => visible.has(row.membershipId) && (!openOnly || row.status === "open"),
   );
-  const current = records.book.requests.find((row) => row.id === selected) ?? null;
+  const current = rows.find((row) => row.id === selected) ?? null;
   const member = current
     ? records.book.members.find((item) => item.id === current.memberId)
     : null;
@@ -91,7 +91,7 @@ export function RequestsBoard() {
             <p className="mt-3 text-sm text-muted">
               Reply {current.repliedAt ? formatDateTime(current.repliedAt) : ""}: {current.reply}
             </p>
-          ) : records.canCorrect ? (
+          ) : records.canMaintain(current.memberId) ? (
             <form
               className="mt-4 flex flex-col gap-2"
               onSubmit={(event) => {
@@ -105,7 +105,7 @@ export function RequestsBoard() {
               <Button type="submit">Send reply</Button>
             </form>
           ) : (
-            <p className="mt-3 text-sm text-muted">Member services sends the reply.</p>
+            <p className="mt-3 text-sm text-muted">The assigned relationship manager sends the reply.</p>
           )}
         </section>
       ) : null}

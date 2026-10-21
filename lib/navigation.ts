@@ -6,7 +6,9 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileText,
+  Building2,
   LayoutDashboard,
+  Landmark,
   LifeBuoy,
   LineChart,
   MessagesSquare,
@@ -77,7 +79,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "members",
-    label: "Members",
+    label: "Members and companies",
     items: [
       {
         href: "/members",
@@ -85,6 +87,13 @@ export const NAV_GROUPS: NavGroup[] = [
         description: "Member records",
         icon: Users,
         area: "members",
+      },
+      {
+        href: "/companies",
+        label: "Companies",
+        description: "Employers on a scheme",
+        icon: Building2,
+        area: "companies",
       },
       {
         href: "/documents",
@@ -137,8 +146,21 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: "schemes",
+    label: "Schemes",
+    items: [
+      {
+        href: "/schemes",
+        label: "Schemes",
+        description: "Pension schemes and assignments",
+        icon: Landmark,
+        area: "schemes",
+      },
+    ],
+  },
+  {
     id: "funds",
-    label: "Funds & reports",
+    label: "Reports",
     items: [
       {
         href: "/monitoring",

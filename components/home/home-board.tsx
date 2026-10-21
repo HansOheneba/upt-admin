@@ -11,18 +11,21 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatusBadge } from "@/components/ui/status-badge";
 import {
   WITHDRAWAL_LABEL,
+  isManagement,
+  isTeamLead,
   memberName,
-  seesAllMembers,
+  seesOrganisation,
   type Book,
   type Member,
+  type Membership,
 } from "@/lib/domain";
 import { formatDate, formatDateTime, ghs, todayIso } from "@/lib/format";
 import {
   contributionMonthStatus,
   currentMonth,
-  currentUnitPrice,
   insuranceFlag,
-  memberPosition,
+  periodFigures,
+  schemeValue,
 } from "@/lib/pension";
 
 type ChangeTone = "good" | "bad" | "neutral";
@@ -47,7 +50,7 @@ type QueueItem = {
 };
 
 export function HomeBoard() {
-  const { book, members, canSee, staff } = useRecords();
+  const { book, members, memberships, canSee, staff } = useRecords();
   const [showAll, setShowAll] = useState(false);
   const month = currentMonth();
   const today = todayIso();
@@ -58,8 +61,8 @@ export function HomeBoard() {
   const staffName = (id: string | null) =>
     book.staff.find((person) => person.id === id)?.name ?? "—";
 
-  const exceptions = countExceptions(members, book.contributions, month);
-  const priorExceptions = countExceptions(members, book.contributions, previousMonth(month));
+  const exceptions = countExceptions(memberships, book.contributions, month);
+  const priorExceptions = countExceptions(memberships, book.contributions, previousMonth(month));
   const lastWeekIso = shiftIso(today, -7);
 
   const appointments = book.appointments
@@ -91,7 +94,7 @@ export function HomeBoard() {
     )
     .sort((a, b) => a.due.localeCompare(b.due));
 
-  const queue = buildQueue(book, members, staffName, month, today);
+  const queue = buildQueue(book, members, memberships, staffName, month, today);
   const shown = showAll ? queue : queue.slice(0, 5);
 
   const cards = [
@@ -132,7 +135,8 @@ export function HomeBoard() {
   const portfolio =
     staff &&
     staff.roles.includes("relationship_manager") &&
-    !seesAllMembers(staff);
+    !seesOrganisation(staff) &&
+    !isTeamLead(staff);
 
   return (
     <div className="flex flex-col gap-6">
@@ -295,7 +299,11 @@ export function HomeBoard() {
         </div>
       ) : null}
 
-      {portfolio ? <Portfolio book={book} members={members} /> : null}
+      {staff && isManagement(staff) ? <Organisation book={book} memberships={memberships} /> : null}
+      {staff && isTeamLead(staff) ? (
+        <TeamView book={book} staffId={staff.id} memberships={memberships} />
+      ) : null}
+      {portfolio ? <Portfolio book={book} memberships={memberships} /> : null}
     </div>
   );
 }
@@ -367,22 +375,119 @@ function Panel({
   );
 }
 
-function Portfolio({ book, members }: { book: Book; members: Member[] }) {
+function Organisation({ book, memberships }: { book: Book; memberships: Membership[] }) {
+  return <SchemeTotals book={book} memberships={memberships} title="Organisation" />;
+}
+
+function TeamView({
+  book,
+  staffId,
+  memberships,
+}: {
+  book: Book;
+  staffId: string;
+  memberships: Membership[];
+}) {
+  const schemeIds = new Set(book.schemes.filter((scheme) => scheme.leadId === staffId).map((scheme) => scheme.id));
+  const scoped = memberships.filter((membership) => schemeIds.has(membership.schemeId));
+  const escalated = book.withdrawals.filter(
+    (row) => row.escalatedAt && scoped.some((membership) => membership.id === row.membershipId),
+  );
+  return (
+    <>
+      <SchemeTotals book={book} memberships={scoped} title="Your schemes" />
+      <section className="rounded-[12px] border border-line bg-card px-5 py-4">
+        <h2 className="text-[17px] font-semibold text-navy">Escalations</h2>
+        {escalated.length === 0 ? (
+          <p className="mt-2 text-sm text-muted">No withdrawal is waiting on you.</p>
+        ) : (
+          <ul className="mt-3 flex flex-col gap-2 text-sm">
+            {escalated.map((row) => (
+              <li key={row.id}>
+                <Link href={`/withdrawals?id=${row.id}`} className="font-medium text-navy hover:underline">
+                  {ghs(row.amount)} · {row.escalationNote}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
+function SchemeTotals({
+  book,
+  memberships,
+  title,
+}: {
+  book: Book;
+  memberships: Membership[];
+  title: string;
+}) {
   const month = currentMonth();
-  const price = currentUnitPrice(book.unitPrices);
-  const active = members.filter((member) => member.status === "active");
-  const pots = active.map((member) => memberPosition(book, member.id).pot);
-  const known = pots.filter((pot): pot is number => pot !== null);
-  const total = known.length === 0 ? null : Math.round(known.reduce((sum, pot) => sum + pot, 0) * 100) / 100;
-  const expected = Math.round(active.reduce((sum, member) => sum + member.monthlyContribution, 0) * 100) / 100;
+  const value = schemeValue(book, memberships);
+  const figures = periodFigures(book, memberships, month);
+  const byScheme = book.schemes
+    .map((scheme) => {
+      const rows = memberships.filter((membership) => membership.schemeId === scheme.id);
+      if (rows.length === 0) return null;
+      const worth = schemeValue(book, rows);
+      const movement = periodFigures(book, rows, month);
+      return { scheme, worth, movement, members: new Set(rows.map((row) => row.memberId)).size };
+    })
+    .filter((row): row is NonNullable<typeof row> => !!row);
+  return (
+    <section className="rounded-[12px] border border-line bg-card px-5 py-5">
+      <h2 className="text-[17px] font-semibold text-navy">{title}</h2>
+      <p className="mt-1 text-sm text-muted">
+        Pension value is the sum of each membership pot. A missing unit price is left out.
+        {value.gaps ? ` ${value.gaps} membership${value.gaps === 1 ? "" : "s"} cannot be valued.` : ""}
+      </p>
+      <dl className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <Metric label="Pension value" value={value.total === null ? "Unavailable" : ghs(value.total)} />
+        <Metric label="Memberships" value={String(memberships.length)} />
+        <Metric label="Contributions" value={ghs(figures.contributions)} hint="Net of reversals this month" />
+        <Metric label="Distributions" value={ghs(figures.distributions)} hint="Paid withdrawals this month" />
+        <Metric
+          label="Average per payment"
+          value={figures.averagePayment === null ? "—" : ghs(figures.averagePayment)}
+        />
+        <Metric
+          label="Average per contributing member"
+          value={figures.averageMember === null ? "—" : ghs(figures.averageMember)}
+        />
+      </dl>
+      <ul className="mt-4 flex flex-col gap-2 text-sm">
+        {byScheme.map((row) => (
+          <li key={row.scheme.id} className="flex justify-between gap-3">
+            <span className="text-navy">{row.scheme.name}</span>
+            <span className="text-right tabular-nums text-muted">
+              {row.worth.total === null ? "Unavailable" : ghs(row.worth.total)}
+              {row.worth.gaps ? ` · ${row.worth.gaps} unpriced` : ""}
+              {" · "}
+              {ghs(row.movement.contributions)} in · {ghs(row.movement.distributions)} out
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function Portfolio({ book, memberships }: { book: Book; memberships: Membership[] }) {
+  const month = currentMonth();
+  const active = memberships.filter((membership) => membership.status === "active");
+  const value = schemeValue(book, active);
+  const expected = Math.round(active.reduce((sum, membership) => sum + membership.monthlyContribution, 0) * 100) / 100;
   const received = Math.round(
     book.contributions
-      .filter((row) => active.some((member) => member.id === row.memberId) && row.date.startsWith(month))
+      .filter((row) => active.some((membership) => membership.id === row.membershipId) && row.date.startsWith(month))
       .reduce((sum, row) => sum + row.amount, 0) * 100,
   ) / 100;
   const open = book.withdrawals.filter(
     (row) =>
-      active.some((member) => member.id === row.memberId) &&
+      active.some((membership) => membership.id === row.membershipId) &&
       (row.status === "received" || row.status === "checking" || row.status === "approved"),
   ).length;
 
@@ -390,14 +495,12 @@ function Portfolio({ book, members }: { book: Book; members: Member[] }) {
     <section className="rounded-[12px] border border-line bg-card px-5 py-5">
       <h2 className="text-[17px] font-semibold text-navy">Assigned portfolio</h2>
       <p className="mt-1 text-sm text-muted">
-        Active members assigned to you.
-        {price
-          ? ` Pension value is units held × the unit price of ${price.price.toFixed(3)}, valued ${formatDate(price.date)}.`
-          : " No unit price is set, so pension value is unavailable."}
+        Active memberships assigned to you. Each pot uses that scheme&apos;s unit price.
+        {value.gaps ? ` ${value.gaps} cannot be valued yet.` : ""}
       </p>
       <dl className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Assigned active members" value={String(active.length)} />
-        <Metric label="Pension value" value={total === null ? "Unavailable" : ghs(total)} />
+        <Metric label="Assigned active memberships" value={String(active.length)} />
+        <Metric label="Pension value" value={value.total === null ? "Unavailable" : ghs(value.total)} />
         <Metric
           label="Contributions this month"
           value={ghs(received)}
@@ -422,6 +525,7 @@ function Metric({ label, value, hint }: { label: string; value: string; hint?: s
 function buildQueue(
   book: Book,
   members: Member[],
+  memberships: Membership[],
   staffName: (id: string | null) => string,
   month: string,
   today: string,
@@ -464,23 +568,26 @@ function buildQueue(
     });
   }
 
-  for (const member of members) {
-    const status = contributionMonthStatus(member, book.contributions, month);
+  for (const membership of memberships) {
+    const member = members.find((item) => item.id === membership.memberId);
+    if (!member) continue;
+    const status = contributionMonthStatus(membership, book.contributions, month);
     if (status !== "missing" && status !== "partial") continue;
     const received = book.contributions
-      .filter((row) => row.memberId === member.id && row.date.startsWith(month))
+      .filter((row) => row.membershipId === membership.id && row.date.startsWith(month))
       .reduce((sum, row) => sum + row.amount, 0);
+    const scheme = book.schemes.find((item) => item.id === membership.schemeId)?.name ?? "Scheme";
     items.push({
-      id: `contrib-${member.id}`,
+      id: `contrib-${membership.id}`,
       priority: status === "missing" ? "High" : "Normal",
       memberId: member.id,
       member: memberName(member),
       issue:
         status === "missing"
-          ? "No contribution posted this month"
-          : `Short payment: ${ghs(received)} of ${ghs(member.monthlyContribution)}`,
+          ? `${scheme}: no contribution posted this month`
+          : `${scheme}: short payment ${ghs(received)} of ${ghs(membership.monthlyContribution)}`,
       when: `${month}-01`,
-      owner: staffName(member.relationshipManagerId),
+      owner: staffName(membership.relationshipManagerId),
       status: status === "missing" ? "Missing" : "Partial",
       href: `/members/${member.id}`,
       rank: status === "missing" ? 5 : 6,
@@ -512,9 +619,9 @@ function labelStatus(value: string) {
   return value[0].toUpperCase() + value.slice(1);
 }
 
-function countExceptions(members: Member[], contributions: Book["contributions"], month: string) {
-  return members.filter((member) => {
-    const status = contributionMonthStatus(member, contributions, month);
+function countExceptions(memberships: Membership[], contributions: Book["contributions"], month: string) {
+  return memberships.filter((membership) => {
+    const status = contributionMonthStatus(membership, contributions, month);
     return status === "missing" || status === "partial";
   }).length;
 }

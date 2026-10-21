@@ -14,19 +14,19 @@ import { Modal } from "@/components/ui/modal";
 import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { memberName, seesAllMembers, type Book } from "@/lib/domain";
+import { memberName, seesOrganisation, type Book } from "@/lib/domain";
 import { formatDate, ghs } from "@/lib/format";
 import {
   contributionMonthStatus,
   currentMonth,
-  memberPosition,
   openRequest,
   openWithdrawal,
+  personHoldings,
 } from "@/lib/pension";
 
 export function MemberDirectory() {
   const params = useSearchParams();
-  const { book, members, canRegister, registerMember, staff } = useRecords();
+  const { book, members, memberships, schemes, canRegister, registerMember, staff } = useRecords();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [scheme, setScheme] = useState("all");
@@ -40,34 +40,51 @@ export function MemberDirectory() {
   const [registering, setRegistering] = useState(false);
   const [page, setPage] = useState(1);
   const month = currentMonth();
-  const schemes = [...new Set(members.map((member) => member.scheme))].sort();
-  const managers = book.staff.filter((person) =>
-    members.some((member) => member.relationshipManagerId === person.id),
+  const schemeOptions = schemes.filter((item) =>
+    memberships.some((membership) => membership.schemeId === item.id),
   );
-  const showManagers = !!staff && seesAllMembers(staff);
+  const managers = book.staff.filter((person) =>
+    memberships.some((membership) => membership.relationshipManagerId === person.id),
+  );
+  const showManagers = !!staff && seesOrganisation(staff);
 
   const rows = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return members.filter((member) => {
+      const own = memberships.filter((membership) => membership.memberId === member.id);
       const name = memberName(member);
-      const haystack = `${name} ${member.memberNumber} ${member.mobile} ${member.email}`.toLowerCase();
+      const numbers = own.map((membership) => membership.membershipNumber).join(" ");
+      const haystack = `${name} ${numbers} ${member.mobile} ${member.email}`.toLowerCase();
       if (needle && !haystack.includes(needle)) return false;
-      if (status !== "all" && member.status !== status) return false;
-      if (scheme !== "all" && member.scheme !== scheme) return false;
-      if (manager !== "all" && member.relationshipManagerId !== manager) return false;
-      const monthStatus = contributionMonthStatus(member, book.contributions, month);
-      if (contribution === "exception" && monthStatus !== "missing" && monthStatus !== "partial") {
+      if (status !== "all" && !own.some((membership) => membership.status === status)) return false;
+      if (scheme !== "all" && !own.some((membership) => membership.schemeId === scheme)) return false;
+      if (manager !== "all" && !own.some((membership) => membership.relationshipManagerId === manager)) {
         return false;
       }
-      if (contribution !== "all" && contribution !== "exception" && monthStatus !== contribution) {
+      const monthStatuses = own.map((membership) =>
+        contributionMonthStatus(membership, book.contributions, month),
+      );
+      if (
+        contribution === "exception" &&
+        !monthStatuses.some((item) => item === "missing" || item === "partial")
+      ) {
+        return false;
+      }
+      if (
+        contribution !== "all" &&
+        contribution !== "exception" &&
+        !monthStatuses.includes(contribution as "received" | "partial" | "missing" | "closed")
+      ) {
         return false;
       }
       if (openOnly.withdrawal && !openWithdrawal(book, member.id)) return false;
       if (openOnly.request && !openRequest(book, member.id)) return false;
-      if (openOnly.joined && !member.memberSince.startsWith(month)) return false;
+      if (openOnly.joined && !own.some((membership) => membership.effectiveFrom.startsWith(month))) {
+        return false;
+      }
       return true;
     });
-  }, [book, contribution, manager, members, month, openOnly, query, scheme, status]);
+  }, [book, contribution, manager, members, memberships, month, openOnly, query, scheme, status]);
 
   useEffect(() => {
     setPage(1);
@@ -110,8 +127,8 @@ export function MemberDirectory() {
           Scheme
           <select value={scheme} onChange={(event) => setScheme(event.target.value)} className={controlClass}>
             <option value="all">All schemes</option>
-            {schemes.map((item) => (
-              <option key={item}>{item}</option>
+            {schemeOptions.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
             ))}
           </select>
         </label>
@@ -205,34 +222,50 @@ export function MemberDirectory() {
               { key: "action", header: "Actions" },
             ]}
             rows={visibleRows.map((member) => {
-              const position = memberPosition(book, member.id);
+              const own = memberships.filter((membership) => membership.memberId === member.id);
+              const holdings = personHoldings(book, member.id).rows.filter((row) =>
+                own.some((membership) => membership.id === row.membership.id),
+              );
+              const known = holdings
+                .map((row) => row.position.pot)
+                .filter((pot): pot is number => pot !== null);
+              const pot =
+                known.length === 0
+                  ? null
+                  : Math.round(known.reduce((sum, value) => sum + value, 0) * 100) / 100;
+              const latest = holdings
+                .map((row) => row.position.latest)
+                .filter((row): row is NonNullable<typeof row> => !!row)
+                .sort((a, b) => b.date.localeCompare(a.date))[0];
               const managerName =
-                book.staff.find((person) => person.id === member.relationshipManagerId)?.name ?? "—";
+                book.staff.find((person) =>
+                  own.some((membership) => membership.relationshipManagerId === person.id),
+                )?.name ?? "—";
               const activity = lastActivity(book, member.id);
+              const active = own.some((membership) => membership.status === "active");
               return {
                 id: member.id,
                 cells: {
                   name: (
                     <Link href={`/members/${member.id}`} className="font-medium text-navy hover:underline">
                       {memberName(member)}
-                      <span className="block text-xs font-normal text-muted">{member.memberNumber}</span>
+                      <span className="block text-xs font-normal text-muted">
+                        {own.map((membership) => membership.membershipNumber).join(", ")}
+                      </span>
                     </Link>
                   ),
-                  scheme: member.scheme,
-                  status: (
-                    <StatusBadge label={member.status === "active" ? "Active" : "Closed"} />
-                  ),
+                  scheme: own
+                    .map((membership) => book.schemes.find((item) => item.id === membership.schemeId)?.name)
+                    .filter(Boolean)
+                    .join(", "),
+                  status: <StatusBadge label={active ? "Active" : "Closed"} />,
                   manager: managerName,
                   pot: (
-                    <span className="tabular-nums">
-                      {position.pot === null ? "Unavailable" : ghs(position.pot)}
-                    </span>
+                    <span className="tabular-nums">{pot === null ? "Unavailable" : ghs(pot)}</span>
                   ),
                   last: (
                     <span className="tabular-nums">
-                      {position.latest
-                        ? `${ghs(position.latest.amount)} · ${formatDate(position.latest.date)}`
-                        : "None"}
+                      {latest ? `${ghs(latest.amount)} · ${formatDate(latest.date)}` : "None"}
                     </span>
                   ),
                   activity: activity ? formatDate(activity) : "None",
@@ -249,6 +282,7 @@ export function MemberDirectory() {
         </>
       )}
       <RegisterDialog
+        schemes={schemes.filter((item) => item.status === "open")}
         open={registering}
         onClose={() => setRegistering(false)}
         onSave={(input) => {
@@ -261,10 +295,12 @@ export function MemberDirectory() {
 }
 
 function RegisterDialog({
+  schemes,
   open,
   onClose,
   onSave,
 }: {
+  schemes: { id: string; name: string }[];
   open: boolean;
   onClose: () => void;
   onSave: (input: {
@@ -279,6 +315,7 @@ function RegisterDialog({
     location: string;
     nextOfKin: string;
     nextOfKinContact: string;
+    schemeId: string;
     monthlyContribution: number;
     retirementAge: number;
     targetPot: number;
@@ -303,6 +340,7 @@ function RegisterDialog({
             location: String(form.get("location") ?? ""),
             nextOfKin: String(form.get("nextOfKin") ?? ""),
             nextOfKinContact: String(form.get("nextOfKinContact") ?? ""),
+            schemeId: String(form.get("schemeId") ?? ""),
             monthlyContribution: Number(form.get("monthlyContribution") ?? 0),
             retirementAge: Number(form.get("retirementAge") ?? 60),
             targetPot: Number(form.get("targetPot") ?? 0),
@@ -320,6 +358,14 @@ function RegisterDialog({
           <Field name="gender" label="Gender" />
           <Field name="dateOfBirth" label="Date of birth" type="date" />
         </div>
+        <label className="flex flex-col gap-1.5 text-sm font-medium text-navy">
+          Scheme
+          <select name="schemeId" required className={controlClass}>
+            {schemes.map((scheme) => (
+              <option key={scheme.id} value={scheme.id}>{scheme.name}</option>
+            ))}
+          </select>
+        </label>
         <Field name="profession" label="Profession" />
         <Field name="location" label="Location" />
         <Field name="nextOfKin" label="Next of kin" />

@@ -10,7 +10,6 @@ import {
   canSeeArea,
   canSeeMember,
   ROLE_LABEL,
-  SCHEME,
   staffInitials,
   type Book,
   type Staff,
@@ -40,7 +39,7 @@ function BreadcrumbTrail() {
 }
 
 export function Topbar({ onMenu }: { onMenu: () => void }) {
-  const { staff, signIn, signOut, book, members, canSee } = useRecords();
+  const { staff, signIn, signOut, book, memberships, canSee, schemes, schemeId, setScheme } = useRecords();
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -68,7 +67,7 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
   const others = book.staff.filter((person) => person.active && person.id !== staff.id);
   const openRequests = canSee("requests")
     ? book.requests.filter(
-        (row) => row.status === "open" && members.some((member) => member.id === row.memberId),
+        (row) => row.status === "open" && memberships.some((membership) => membership.id === row.membershipId),
       ).length
     : 0;
 
@@ -88,10 +87,20 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
         </Suspense>
       </div>
       <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-        <div className="hidden text-right md:block">
-          <p className="text-[11px] leading-4 text-muted">Scheme</p>
-          <p className="text-[13px] leading-4 font-medium text-navy">{SCHEME}</p>
-        </div>
+        <label className="min-w-0 text-right">
+          <span className="hidden text-[11px] leading-4 text-muted sm:block">Scheme</span>
+          <select
+            value={schemeId}
+            onChange={(event) => setScheme(event.target.value)}
+            className="block max-w-28 cursor-pointer truncate bg-transparent text-right text-[13px] leading-4 font-medium text-navy sm:max-w-52"
+            aria-label="Working scheme"
+          >
+            {schemes.length > 1 ? <option value="all">All schemes</option> : null}
+            {schemes.map((scheme) => (
+              <option key={scheme.id} value={scheme.id}>{scheme.name}</option>
+            ))}
+          </select>
+        </label>
         {canSee("requests") ? (
           <>
             <span className="hidden h-8 w-px bg-line md:block" aria-hidden />
@@ -194,7 +203,7 @@ function pathAfterSwitch(pathname: string, person: Staff, book: Book) {
   const memberMatch = pathname.match(/^\/members\/([^/]+)/);
   if (memberMatch) {
     const member = book.members.find((item) => item.id === decodeURIComponent(memberMatch[1]));
-    if (!member || !canSeeMember(person, member)) return "/operations";
+    if (!member || !canSeeMember(book, person, member)) return "/operations";
     return null;
   }
 

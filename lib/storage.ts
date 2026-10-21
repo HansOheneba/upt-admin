@@ -1,4 +1,5 @@
-import { BOOK_KEY, BOOK_VERSION, SESSION_KEY, type Book } from "@/lib/domain";
+import { BOOK_KEY, BOOK_VERSION, SCHEME_KEY, SESSION_KEY, type Book } from "@/lib/domain";
+import { migrateBook } from "@/lib/migrate";
 import { createSeed } from "@/lib/seed";
 
 const serverBook = createSeed();
@@ -13,11 +14,13 @@ export function loadBook(): Book {
   try {
     const raw = window.localStorage.getItem(BOOK_KEY);
     if (!raw) return serverBook;
-    const parsed = JSON.parse(raw) as Book;
-    if (parsed.version !== BOOK_VERSION || !Array.isArray(parsed.members)) {
-      return serverBook;
+    const parsed = JSON.parse(raw) as unknown;
+    const book = migrateBook(parsed);
+    if (!book || !Array.isArray(book.members)) return serverBook;
+    if ((parsed as { version?: number }).version !== BOOK_VERSION) {
+      window.localStorage.setItem(BOOK_KEY, JSON.stringify(book));
     }
-    return parsed;
+    return book;
   } catch {
     return serverBook;
   }
@@ -67,4 +70,32 @@ export function writeSession(staffId: string | null) {
   if (staffId) window.sessionStorage.setItem(SESSION_KEY, staffId);
   else window.sessionStorage.removeItem(SESSION_KEY);
   sessionListeners.forEach((listener) => listener());
+}
+
+let clientScheme: string | null | undefined;
+const schemeListeners = new Set<() => void>();
+
+export function loadWorkingScheme() {
+  if (typeof window === "undefined") return null;
+  return window.sessionStorage.getItem(SCHEME_KEY);
+}
+
+export function getServerScheme(): string | null {
+  return null;
+}
+
+export function getClientScheme() {
+  if (clientScheme === undefined) clientScheme = loadWorkingScheme();
+  return clientScheme;
+}
+
+export function subscribeScheme(listener: () => void) {
+  schemeListeners.add(listener);
+  return () => schemeListeners.delete(listener);
+}
+
+export function writeWorkingScheme(schemeId: string) {
+  clientScheme = schemeId;
+  window.sessionStorage.setItem(SCHEME_KEY, schemeId);
+  schemeListeners.forEach((listener) => listener());
 }

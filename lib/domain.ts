@@ -1,14 +1,14 @@
-export const SCHEME = "My Own Pension" as const;
-export const BOOK_VERSION = 3;
+export const BOOK_VERSION = 4;
 export const BOOK_KEY = "upt.staff.book.v1";
 export const SESSION_KEY = "upt.staff.session";
+export const SCHEME_KEY = "upt.staff.scheme";
 
 export type Role =
-  | "member_services"
-  | "finance"
-  | "review"
+  | "management"
+  | "team_lead"
   | "relationship_manager"
-  | "supervisor";
+  | "finance"
+  | "review";
 
 export type Staff = {
   id: string;
@@ -16,13 +16,62 @@ export type Staff = {
   email: string;
   roles: Role[];
   active: boolean;
+  leadId: string | null;
+};
+
+export type SchemeStatus = "open" | "closed";
+
+export type Scheme = {
+  id: string;
+  name: string;
+  code: string;
+  status: SchemeStatus;
+  leadId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SchemeRmAssignment = {
+  id: string;
+  schemeId: string;
+  relationshipManagerId: string;
+  assignedAt: string;
+  assignedBy: string;
+};
+
+export type Company = {
+  id: string;
+  name: string;
+  reference: string;
+  status: "active" | "inactive";
+  contactName?: string;
+  contactEmail?: string;
+  contactMobile?: string;
+  relationshipManagerId?: string | null;
+  updatedAt?: string;
+};
+
+export type CompanySchemeAssignment = {
+  id: string;
+  companyId: string;
+  schemeId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  status: "active" | "ended";
+};
+
+export type Employment = {
+  id: string;
+  memberId: string;
+  companyId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
 };
 
 export type MemberStatus = "active" | "closed";
 
 export type Member = {
   id: string;
-  memberNumber: string;
   firstName: string;
   lastName: string;
   displayName: string;
@@ -35,17 +84,26 @@ export type Member = {
   location: string;
   nextOfKin: string;
   nextOfKinContact: string;
-  scheme: typeof SCHEME;
-  memberSince: string;
+};
+
+export type Membership = {
+  id: string;
+  memberId: string;
+  schemeId: string;
+  membershipNumber: string;
   status: MemberStatus;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  companyId: string | null;
+  relationshipManagerId: string | null;
   monthlyContribution: number;
   retirementAge: number;
   targetPot: number;
-  relationshipManagerId: string | null;
 };
 
 export type UnitPrice = {
   id: string;
+  schemeId: string;
   date: string;
   price: number;
   setBy: string;
@@ -55,6 +113,7 @@ export type UnitPrice = {
 export type Contribution = {
   id: string;
   memberId: string;
+  membershipId: string;
   date: string;
   amount: number;
   unitPrice: number;
@@ -93,12 +152,12 @@ export type WithdrawalEvent = {
 export type Withdrawal = {
   id: string;
   memberId: string;
+  membershipId: string;
   submittedAt: string;
   amount: number;
   reason: string;
   destinationType: "momo" | "bank";
   destination: string;
-  signatureDataUrl: string;
   status: WithdrawalStatus;
   name: string;
   mobile: string;
@@ -113,12 +172,17 @@ export type Withdrawal = {
   unitsTaken: number | null;
   unitPriceUsed: number | null;
   declineReason: string | null;
+  rmReadyAt: string | null;
+  escalatedAt: string | null;
+  escalatedBy: string | null;
+  escalationNote: string | null;
   events: WithdrawalEvent[];
 };
 
 export type MemberRequest = {
   id: string;
   memberId: string;
+  membershipId: string;
   subject: string;
   body: string;
   createdAt: string;
@@ -283,6 +347,7 @@ export type DocumentTag =
 export type DocumentItem = {
   id: string;
   memberId: string;
+  membershipId: string | null;
   name: string;
   tag: DocumentTag;
   uploadedBy: "member" | "staff";
@@ -296,6 +361,8 @@ export type AuditEntry = {
   staffId: string;
   staffName: string;
   memberId: string | null;
+  schemeId: string | null;
+  companyId?: string | null;
   action: string;
   field: string;
   previousValue: string;
@@ -306,7 +373,13 @@ export type AuditEntry = {
 export type Book = {
   version: number;
   staff: Staff[];
+  schemes: Scheme[];
+  schemeAssignments: SchemeRmAssignment[];
+  companies: Company[];
+  companySchemes: CompanySchemeAssignment[];
+  employments: Employment[];
   members: Member[];
+  memberships: Membership[];
   unitPrices: UnitPrice[];
   contributions: Contribution[];
   payments: UnmatchedPayment[];
@@ -330,11 +403,20 @@ export type Book = {
 };
 
 export const ROLE_LABEL: Record<Role, string> = {
-  member_services: "Member services",
-  finance: "Finance",
-  review: "Review",
+  management: "Management",
+  team_lead: "Team lead",
   relationship_manager: "Relationship manager",
-  supervisor: "Supervisor",
+  finance: "Finance",
+  review: "Compliance and audit",
+};
+
+export const MANAGEMENT_STAFF: Staff = {
+  id: "stf-management",
+  name: "Selorm Agbeko",
+  email: "selorm.agbeko@upt.com.gh",
+  roles: ["management"],
+  active: true,
+  leadId: null,
 };
 
 export const WITHDRAWAL_LABEL: Record<WithdrawalStatus, string> = {
@@ -372,33 +454,159 @@ export function staffInitials(name: string) {
 }
 
 export function hasRole(staff: Staff, role: Role) {
-  return staff.roles.includes(role) || staff.roles.includes("supervisor");
+  return staff.roles.includes(role);
 }
 
-export function isSupervisor(staff: Staff) {
-  return staff.roles.includes("supervisor");
+export function isManagement(staff: Staff) {
+  return hasRole(staff, "management");
 }
 
-export function seesAllMembers(staff: Staff) {
-  return staff.roles.some((role) =>
-    ["supervisor", "member_services", "finance", "review"].includes(role),
-  );
+export function isTeamLead(staff: Staff) {
+  return hasRole(staff, "team_lead");
+}
+
+export function seesOrganisation(staff: Staff) {
+  return staff.roles.some((role) => role === "management" || role === "finance" || role === "review");
+}
+
+export function schemeById(book: Book, schemeId: string) {
+  return book.schemes.find((scheme) => scheme.id === schemeId) ?? null;
+}
+
+export function membershipById(book: Book, membershipId: string) {
+  return book.memberships.find((membership) => membership.id === membershipId) ?? null;
+}
+
+export function membershipsForMember(book: Book, memberId: string) {
+  return book.memberships.filter((membership) => membership.memberId === memberId);
+}
+
+export function ownedSchemes(book: Book, staff: Staff) {
+  return book.schemes.filter((scheme) => scheme.leadId === staff.id);
+}
+
+export function assignedSchemeIds(book: Book, staffId: string) {
+  return book.schemeAssignments
+    .filter((row) => row.relationshipManagerId === staffId)
+    .map((row) => row.schemeId);
+}
+
+export function schemesForStaff(book: Book, staff: Staff) {
+  if (seesOrganisation(staff)) return book.schemes;
+  const ids = new Set<string>();
+  if (isTeamLead(staff)) {
+    for (const scheme of ownedSchemes(book, staff)) ids.add(scheme.id);
+  }
+  if (hasRole(staff, "relationship_manager")) {
+    for (const id of assignedSchemeIds(book, staff.id)) ids.add(id);
+  }
+  return book.schemes.filter((scheme) => ids.has(scheme.id));
+}
+
+export function canAccessScheme(book: Book, staff: Staff, schemeId: string) {
+  return schemesForStaff(book, staff).some((scheme) => scheme.id === schemeId);
+}
+
+export function visibleMemberships(book: Book, staff: Staff) {
+  if (seesOrganisation(staff)) return book.memberships;
+  const rows: Membership[] = [];
+  const seen = new Set<string>();
+  const add = (membership: Membership) => {
+    if (seen.has(membership.id)) return;
+    seen.add(membership.id);
+    rows.push(membership);
+  };
+  if (isTeamLead(staff)) {
+    const owned = new Set(ownedSchemes(book, staff).map((scheme) => scheme.id));
+    for (const membership of book.memberships) {
+      if (owned.has(membership.schemeId)) add(membership);
+    }
+  }
+  if (hasRole(staff, "relationship_manager")) {
+    const assigned = new Set(assignedSchemeIds(book, staff.id));
+    for (const membership of book.memberships) {
+      if (membership.relationshipManagerId === staff.id && assigned.has(membership.schemeId)) {
+        add(membership);
+      }
+    }
+  }
+  return rows;
 }
 
 export function visibleMembers(book: Book, staff: Staff) {
-  if (seesAllMembers(staff)) return book.members;
-  return book.members.filter(
-    (member) => member.relationshipManagerId === staff.id,
-  );
+  const ids = new Set(visibleMemberships(book, staff).map((membership) => membership.memberId));
+  return book.members.filter((member) => ids.has(member.id));
 }
 
-export function canSeeMember(staff: Staff, member: Member) {
-  return seesAllMembers(staff) || member.relationshipManagerId === staff.id;
+export function canSeeMember(book: Book, staff: Staff, member: Member) {
+  return visibleMembers(book, staff).some((item) => item.id === member.id);
+}
+
+export function companiesForStaff(book: Book, staff: Staff) {
+  if (seesOrganisation(staff)) return book.companies;
+  const ids = new Set<string>();
+  if (isTeamLead(staff)) {
+    const owned = new Set(ownedSchemes(book, staff).map((scheme) => scheme.id));
+    for (const row of book.companySchemes) {
+      if (row.status === "active" && owned.has(row.schemeId)) ids.add(row.companyId);
+    }
+    for (const company of book.companies) {
+      const participating = book.companySchemes.some(
+        (row) => row.companyId === company.id && row.status === "active",
+      );
+      if (!participating) ids.add(company.id);
+    }
+  }
+  if (hasRole(staff, "relationship_manager")) {
+    for (const company of book.companies) {
+      if (company.relationshipManagerId === staff.id) ids.add(company.id);
+    }
+    for (const membership of visibleMemberships(book, staff)) {
+      if (membership.companyId) ids.add(membership.companyId);
+    }
+  }
+  return book.companies.filter((company) => ids.has(company.id));
+}
+
+export function canManageCompany(book: Book, staff: Staff, companyId: string) {
+  if (!isManagement(staff) && !isTeamLead(staff)) return false;
+  return companiesForStaff(book, staff).some((company) => company.id === companyId);
+}
+
+export function canMaintainMember(book: Book, staff: Staff, memberId: string) {
+  if (!hasRole(staff, "relationship_manager") && !isTeamLead(staff)) return false;
+  return visibleMemberships(book, staff).some((membership) => membership.memberId === memberId);
+}
+
+export function canRegisterMember(staff: Staff) {
+  return hasRole(staff, "relationship_manager");
+}
+
+export function canCreateScheme(staff: Staff) {
+  return allows(staff, "create_scheme");
+}
+
+export function canManageScheme(book: Book, staff: Staff, scheme: Scheme) {
+  if (isManagement(staff)) return true;
+  return isTeamLead(staff) && scheme.leadId === staff.id;
+}
+
+export function canAdministerStaff(staff: Staff) {
+  return allows(staff, "administer_staff");
+}
+
+export function resolveWorkingScheme(schemes: Scheme[], saved: string | null) {
+  if (schemes.length === 0) return "all";
+  if (saved === "all" && schemes.length > 1) return "all";
+  if (saved && schemes.some((scheme) => scheme.id === saved)) return saved;
+  return schemes[0].id;
 }
 
 export type NavArea =
   | "home"
   | "members"
+  | "companies"
+  | "schemes"
   | "withdrawals"
   | "contributions"
   | "unitPrice"
@@ -420,44 +628,65 @@ export function canSeeArea(staff: Staff, area: NavArea) {
     case "members":
     case "copilot":
       return true;
+    case "schemes":
+      return any("team_lead", "management");
+    case "companies":
+      return any("team_lead", "management", "relationship_manager");
     case "withdrawals":
-      return any("member_services", "review", "finance", "supervisor");
+      return any("relationship_manager", "team_lead", "review", "finance", "management");
     case "contributions":
+      return any("finance", "relationship_manager", "team_lead", "management");
     case "unitPrice":
-      return any("finance", "supervisor");
+      return any("finance");
     case "requests":
-      return any("member_services", "supervisor");
+      return any("relationship_manager", "team_lead", "management");
     case "appointments":
     case "tasks":
     case "messages":
-      return any("relationship_manager", "member_services", "supervisor");
+      return any("relationship_manager", "team_lead");
     case "documents":
-      return any("member_services", "relationship_manager", "supervisor");
+      return any("relationship_manager", "team_lead", "review", "management");
     case "monitoring":
+      return any("management", "team_lead", "finance");
     case "audit":
+      return allows(staff, "read_audit");
     case "staff":
-      return roles.has("supervisor");
+      return any("management");
     default:
       return false;
   }
 }
 
-export function canCorrectMember(staff: Staff) {
-  return hasRole(staff, "member_services");
+export type StaffPermission =
+  | "post_money"
+  | "review_withdrawal"
+  | "administer_staff"
+  | "create_scheme"
+  | "read_audit";
+
+export function allows(staff: Staff, permission: StaffPermission) {
+  switch (permission) {
+    case "post_money":
+      return hasRole(staff, "finance");
+    case "review_withdrawal":
+      return hasRole(staff, "review");
+    case "administer_staff":
+      return isManagement(staff);
+    case "create_scheme":
+      return isManagement(staff) || isTeamLead(staff);
+    case "read_audit":
+      return isManagement(staff) || hasRole(staff, "review");
+  }
 }
 
 export function canPostMoney(staff: Staff) {
-  return hasRole(staff, "finance");
+  return allows(staff, "post_money");
 }
 
 export function canReviewWithdrawal(staff: Staff) {
-  return hasRole(staff, "review");
+  return allows(staff, "review_withdrawal");
 }
 
-export function canAdvise(staff: Staff, member: Member) {
-  return (
-    isSupervisor(staff) ||
-    (staff.roles.includes("relationship_manager") &&
-      member.relationshipManagerId === staff.id)
-  );
+export function canAdvise(book: Book, staff: Staff, member: Member) {
+  return canMaintainMember(book, staff, member.id);
 }

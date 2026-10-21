@@ -1,7 +1,7 @@
 import type { Book } from "@/lib/domain";
 import { WITHDRAWAL_LABEL, memberName } from "@/lib/domain";
 import { ghs } from "@/lib/format";
-import { currentUnitPrice, memberPosition } from "@/lib/pension";
+import { personHoldings } from "@/lib/pension";
 
 export type CopilotMember = {
   id: string;
@@ -30,33 +30,40 @@ export type CopilotBook = {
 
 export function toCopilotBook(book: Book, memberIds: string[]): CopilotBook {
   const allowed = new Set(memberIds);
-  const price = currentUnitPrice(book.unitPrices);
   const members = book.members.filter((member) => allowed.has(member.id)).map((member) => {
-    const position = memberPosition(book, member.id);
+    const holdings = personHoldings(book, member.id);
+    const open = holdings.rows.find((row) => row.position.openWithdrawal)?.position.openWithdrawal;
+    const active = holdings.rows.filter((row) => row.membership.status === "active");
     return {
       id: member.id,
-      ref: member.memberNumber,
+      ref: holdings.rows.map((row) => row.membership.membershipNumber).join(", "),
       name: memberName(member),
       mobile: member.mobile,
       email: member.email,
       location: member.location,
-      status: member.status,
-      balance: position.pot,
-      units: position.units,
-      monthlyContribution: member.monthlyContribution,
-      openWithdrawal: position.openWithdrawal
-        ? `${WITHDRAWAL_LABEL[position.openWithdrawal.status]} ${ghs(position.openWithdrawal.amount)}`
-        : "",
+      status: active.length ? "active" : "closed",
+      balance: holdings.combinedPot,
+      units: holdings.rows.reduce((sum, row) => sum + row.position.units, 0),
+      monthlyContribution: active.reduce((sum, row) => sum + row.membership.monthlyContribution, 0),
+      openWithdrawal: open ? `${WITHDRAWAL_LABEL[open.status]} ${ghs(open.amount)}` : "",
       openRequest: book.requests.some(
         (request) => request.memberId === member.id && request.status === "open",
       ),
     };
   });
+  const schemeNames = [
+    ...new Set(
+      book.memberships
+        .filter((membership) => allowed.has(membership.memberId))
+        .map((membership) => book.schemes.find((scheme) => scheme.id === membership.schemeId)?.name)
+        .filter((name): name is string => !!name),
+    ),
+  ];
 
   return {
-    fundName: "My Own Pension",
-    unitPrice: price?.price ?? null,
-    unitPriceDate: price?.date ?? "",
+    fundName: schemeNames.join(", ") || "Schemes",
+    unitPrice: null,
+    unitPriceDate: "",
     members,
     openWithdrawals: book.withdrawals.filter(
       (row) =>

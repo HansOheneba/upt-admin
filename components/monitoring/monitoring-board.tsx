@@ -14,15 +14,15 @@ import {
   contributionMonthStatus,
   currentUnitPrice,
   inRange,
-  memberPosition,
+  membershipPosition,
   monthsTouched,
   periodStart,
-  totalPot,
-  totalUnitsInIssue,
+  pricesForScheme,
+  schemeValue,
 } from "@/lib/pension";
 
 export function MonitoringBoard() {
-  const { book, members } = useRecords();
+  const { book, memberships, schemeId, schemes } = useRecords();
   const [preset, setPreset] = useState<"month" | "quarter" | "custom">("month");
   const [from, setFrom] = useState(periodStart("month"));
   const [to, setTo] = useState(todayIso());
@@ -33,29 +33,40 @@ export function MonitoringBoard() {
     return { from, to };
   }, [from, preset, to]);
 
-  const joined = members.filter(
-    (member) => member.status === "active" && inRange(member.memberSince, range.from, range.to),
+  const ids = useMemo(() => new Set(memberships.map((membership) => membership.id)), [memberships]);
+  const joined = memberships.filter(
+    (membership) => membership.status === "active" && inRange(membership.effectiveFrom, range.from, range.to),
   );
-  const active = members.filter((member) => member.status === "active");
-  const posted = book.contributions.filter((row) => inRange(row.date, range.from, range.to));
+  const active = memberships.filter((membership) => membership.status === "active");
+  const posted = book.contributions.filter(
+    (row) => ids.has(row.membershipId) && inRange(row.date, range.from, range.to),
+  );
   const amount = posted.reduce((sum, row) => sum + row.amount, 0);
   const units = posted.reduce((sum, row) => sum + row.units, 0);
   const months = monthsTouched(range.from, range.to);
-  const missed = active.filter((member) =>
+  const missed = active.filter((membership) =>
     months.some(
-      (month) => contributionMonthStatus(member, book.contributions, month) === "missing",
+      (month) => contributionMonthStatus(membership, book.contributions, month) === "missing",
     ),
   );
-  const withdrawals = book.withdrawals.filter((row) =>
-    inRange(row.submittedAt, range.from, range.to),
+  const withdrawals = book.withdrawals.filter(
+    (row) => ids.has(row.membershipId) && inRange(row.submittedAt, range.from, range.to),
   );
   const byStage = (status: WithdrawalStatus) =>
     withdrawals.filter((row) => row.status === status);
   const waitingAmount = book.withdrawals
-    .filter((row) => row.status === "received" || row.status === "checking" || row.status === "approved")
+    .filter(
+      (row) =>
+        ids.has(row.membershipId) &&
+        (row.status === "received" || row.status === "checking" || row.status === "approved"),
+    )
     .reduce((sum, row) => sum + row.amount, 0);
   const paid = book.withdrawals.filter(
-    (row) => row.status === "paid" && row.paidAt && inRange(row.paidAt, range.from, range.to),
+    (row) =>
+      ids.has(row.membershipId) &&
+      row.status === "paid" &&
+      row.paidAt &&
+      inRange(row.paidAt, range.from, range.to),
   );
   const paidAmount = paid.reduce((sum, row) => sum + row.amount, 0);
   const averageDays =
@@ -66,17 +77,21 @@ export function MonitoringBoard() {
             paid.length) *
             10,
         ) / 10;
-  const openRequests = book.requests.filter((row) => row.status === "open");
+  const openRequests = book.requests.filter((row) => row.status === "open" && ids.has(row.membershipId));
   const stale = openRequests.filter((row) => daysSince(row.createdAt) > 2);
-  const price = currentUnitPrice(book.unitPrices);
-  const unitsIssued = totalUnitsInIssue(book);
-  const pot = totalPot(book);
+  const price =
+    schemeId === "all" ? null : currentUnitPrice(pricesForScheme(book, schemeId));
+  const worth = schemeValue(book, active);
+  const schemeLabel =
+    schemeId === "all"
+      ? "All schemes in your authority"
+      : (schemes.find((scheme) => scheme.id === schemeId)?.name ?? "Scheme");
 
   return (
     <div>
       <PageHeader
         title="Fund overview"
-        description="Scheme position for My Own Pension. Figures use the records on file for the period you choose."
+        description={`Scheme position for ${schemeLabel}. Figures use the records on file for the period you choose.`}
       />
       <div className="mb-4 flex flex-wrap items-end gap-2">
         {(["month", "quarter", "custom"] as const).map((item) => (
@@ -100,7 +115,7 @@ export function MonitoringBoard() {
         {formatDate(range.from)} to {formatDate(range.to)}
       </p>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Active members" value={String(active.length)} hint={`${joined.length} joined in the period`} />
+        <StatCard label="Active memberships" value={String(active.length)} hint={`${joined.length} opened in the period`} />
         <StatCard label="Contributions in period" value={ghs(amount)} hint={`${posted.length} posted · ${formatUnits(units)} units allocated`} />
         <StatCard label="Missed contribution" value={String(missed.length)} hint="Nothing received in a month of this period" />
         <StatCard label="Withdrawals waiting" value={ghs(waitingAmount)} hint="Received, under review, or approved. Not yet paid." />
@@ -110,12 +125,22 @@ export function MonitoringBoard() {
         <StatCard
           label="Unit price"
           value={price ? price.price.toFixed(3) : "Not set"}
-          hint={price ? `Valuation price set ${formatDate(price.date)}` : "Pension value is unavailable"}
+          hint={
+            price
+              ? `Valuation price set ${formatDate(price.date)}`
+              : schemeId === "all"
+                ? "Choose one scheme to see its unit price"
+                : "Pension value is unavailable"
+          }
         />
         <StatCard
           label="Pension value"
-          value={pot === null ? "Unavailable" : ghs(pot)}
-          hint={`${formatUnits(unitsIssued)} units in issue × current unit price`}
+          value={worth.total === null ? "Unavailable" : ghs(worth.total)}
+          hint={
+            worth.gaps
+              ? `${formatUnits(worth.units)} units · ${worth.gaps} memberships have no price`
+              : `${formatUnits(worth.units)} units, each scheme at its own price`
+          }
         />
       </div>
       <section id="reports" className="mt-6 rounded-[12px] border border-line bg-card px-5 py-4">
@@ -124,9 +149,9 @@ export function MonitoringBoard() {
           Exports use the same records as the figures above, for {formatDate(range.from)} to {formatDate(range.to)}.
         </p>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <ReportCard title="Member reports" text="Member list with pension value and units." onExport={() => exportMembers(book, members)} />
-          <ReportCard title="Contribution reports" text="Contribution ledger for the selected period." onExport={() => exportContributions(book, range)} />
-          <ReportCard title="Withdrawal reports" text="Withdrawal register for submissions in the period." onExport={() => exportWithdrawals(book, range)} />
+          <ReportCard title="Member reports" text="Membership list with pension value and units." onExport={() => exportMembers(book, memberships)} />
+          <ReportCard title="Contribution reports" text={`Contribution ledger for ${schemeLabel}, ${formatDate(range.from)} to ${formatDate(range.to)}.`} onExport={() => exportContributions(book, range, ids)} />
+          <ReportCard title="Withdrawal reports" text={`Withdrawal register for ${schemeLabel}, ${formatDate(range.from)} to ${formatDate(range.to)}.`} onExport={() => exportWithdrawals(book, range, ids)} />
         </div>
       </section>
       <ul className="mt-4 text-sm text-muted">
@@ -162,22 +187,23 @@ function ReportCard({
 }
 
 function exportMembers(
-  book: Parameters<typeof memberPosition>[0],
-  members: { id: string; memberNumber: string; mobile: string; email: string; location: string; status: string; scheme: string }[],
+  book: Parameters<typeof membershipPosition>[0],
+  memberships: { id: string; memberId: string; membershipNumber: string; schemeId: string; status: string }[],
 ) {
   downloadCsv("members.csv", [
-    ["Name", "Member number", "Mobile", "Email", "Location", "Scheme", "Status", "Pot", "Units", "Last contribution"],
-    ...members.map((member) => {
-      const position = memberPosition(book, member.id);
-      const named = book.members.find((item) => item.id === member.id);
+    ["Name", "Membership", "Mobile", "Email", "Location", "Scheme", "Status", "Pot", "Units", "Last contribution"],
+    ...memberships.map((membership) => {
+      const position = membershipPosition(book, membership.id);
+      const named = book.members.find((item) => item.id === membership.memberId);
+      const scheme = book.schemes.find((item) => item.id === membership.schemeId);
       return [
         named ? memberName(named) : "",
-        member.memberNumber,
-        member.mobile,
-        member.email,
-        member.location,
-        member.scheme,
-        member.status,
+        membership.membershipNumber,
+        named?.mobile ?? "",
+        named?.email ?? "",
+        named?.location ?? "",
+        scheme?.name ?? "",
+        membership.status,
         position.pot === null ? "Unavailable" : ghs(position.pot),
         formatUnits(position.units),
         position.latest ? formatDate(position.latest.date) : "",
@@ -187,18 +213,24 @@ function exportMembers(
 }
 
 function exportContributions(
-  book: Parameters<typeof memberPosition>[0],
+  book: Parameters<typeof membershipPosition>[0],
   range: { from: string; to: string },
+  membershipIds: Set<string>,
 ) {
-  const rows = book.contributions.filter((row) => inRange(row.date, range.from, range.to));
+  const rows = book.contributions.filter(
+    (row) => membershipIds.has(row.membershipId) && inRange(row.date, range.from, range.to),
+  );
   downloadCsv("contributions.csv", [
-    ["Date", "Member", "Member number", "Amount", "Unit price", "Units", "Channel"],
+    ["Date", "Member", "Scheme", "Membership", "Amount", "Unit price", "Units", "Channel"],
     ...rows.map((row) => {
       const member = book.members.find((item) => item.id === row.memberId);
+      const membership = book.memberships.find((item) => item.id === row.membershipId);
+      const scheme = book.schemes.find((item) => item.id === membership?.schemeId);
       return [
         row.date,
         member ? memberName(member) : "",
-        member?.memberNumber ?? "",
+        scheme?.name ?? "",
+        membership?.membershipNumber ?? "",
         ghs(row.amount),
         row.unitPrice.toFixed(3),
         formatUnits(row.units),
@@ -209,18 +241,24 @@ function exportContributions(
 }
 
 function exportWithdrawals(
-  book: Parameters<typeof memberPosition>[0],
+  book: Parameters<typeof membershipPosition>[0],
   range: { from: string; to: string },
+  membershipIds: Set<string>,
 ) {
-  const rows = book.withdrawals.filter((row) => inRange(row.submittedAt, range.from, range.to));
+  const rows = book.withdrawals.filter(
+    (row) => membershipIds.has(row.membershipId) && inRange(row.submittedAt, range.from, range.to),
+  );
   downloadCsv("withdrawals.csv", [
-    ["Submitted", "Member", "Member number", "Amount", "Reason", "Destination", "Status"],
+    ["Submitted", "Member", "Scheme", "Membership", "Amount", "Reason", "Destination", "Status"],
     ...rows.map((row) => {
       const member = book.members.find((item) => item.id === row.memberId);
+      const membership = book.memberships.find((item) => item.id === row.membershipId);
+      const scheme = book.schemes.find((item) => item.id === membership?.schemeId);
       return [
         formatDate(row.submittedAt),
         member ? memberName(member) : row.name,
-        member?.memberNumber ?? "",
+        scheme?.name ?? "",
+        membership?.membershipNumber ?? "",
         ghs(row.amount),
         row.reason,
         row.destination,

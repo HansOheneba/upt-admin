@@ -1,13 +1,6 @@
-import {
-  BOOK_VERSION,
-  type Book,
-  type Contribution,
-} from "@/lib/domain";
+import { type Book } from "@/lib/domain";
+import { migrateBook } from "@/lib/migrate";
 import { unitsFor } from "@/lib/pension";
-
-const SIGNATURE = `data:image/svg+xml,${encodeURIComponent(
-  `<svg xmlns="http://www.w3.org/2000/svg" width="240" height="72" viewBox="0 0 240 72"><path d="M8 46c18-28 28 18 46-2s22-30 40-6 18 24 36 4 28-22 48 2 22 18 46-4" fill="none" stroke="#1e3059" stroke-width="2.2" stroke-linecap="round"/></svg>`,
-)}`;
 
 function contribution(
   id: string,
@@ -15,7 +8,7 @@ function contribution(
   date: string,
   amount: number,
   price: number,
-): Contribution {
+) {
   return {
     id,
     memberId,
@@ -23,7 +16,7 @@ function contribution(
     amount,
     unitPrice: price,
     units: unitsFor(amount, price),
-    channel: "mtn_momo",
+    channel: "mtn_momo" as const,
     postedBy: "stf-efua",
     postedAt: `${date}T09:15:00.000Z`,
     reversalOf: null,
@@ -32,8 +25,8 @@ function contribution(
 }
 
 export function createSeed(): Book {
-  return {
-    version: BOOK_VERSION,
+  const legacy = {
+    version: 3,
     staff: [
       {
         id: "stf-abena",
@@ -298,7 +291,6 @@ export function createSeed(): Book {
         reason: "School fees",
         destinationType: "momo",
         destination: "024 410 2281",
-        signatureDataUrl: SIGNATURE,
         status: "received",
         name: "Ama Serwaa Mensah",
         mobile: "024 410 2281",
@@ -331,7 +323,6 @@ export function createSeed(): Book {
         reason: "Medical",
         destinationType: "bank",
         destination: "GCB 0123456789012",
-        signatureDataUrl: SIGNATURE,
         status: "checking",
         name: "Akosua Boateng",
         mobile: "027 640 1184",
@@ -371,7 +362,6 @@ export function createSeed(): Book {
         reason: "Rent",
         destinationType: "bank",
         destination: "Ecobank 1442093381001",
-        signatureDataUrl: SIGNATURE,
         status: "approved",
         name: "Yaw Mensah",
         mobile: "050 772 3091",
@@ -406,7 +396,7 @@ export function createSeed(): Book {
             staffId: "stf-kwame",
             staffName: "Kwame Asante",
             action: "Approved",
-            note: "Identity, amount, next of kin and signature checked.",
+            note: "Identity, amount and next of kin checked.",
           },
         ],
       },
@@ -418,7 +408,6 @@ export function createSeed(): Book {
         reason: "Partial withdrawal",
         destinationType: "momo",
         destination: "020 318 4412",
-        signatureDataUrl: SIGNATURE,
         status: "paid",
         name: "Kofi Owusu",
         mobile: "020 318 4412",
@@ -763,6 +752,190 @@ export function createSeed(): Book {
         previousValue: "Under review",
         newValue: "Approved",
         summary: "Kwame Asante approved Yaw Mensah's withdrawal.",
+      },
+    ],
+  };
+  const migrated = migrateBook(legacy);
+  if (!migrated) throw new Error("The staff book could not be prepared.");
+  return enrichSeed(migrated);
+}
+
+function enrichSeed(book: Book): Book {
+  const now = "2026-10-01T08:00:00.000Z";
+  const leadId = "stf-adwoa";
+  const schemes = [
+    ...book.schemes,
+    {
+      id: "sch-hsp",
+      name: "Harbour Staff Pension",
+      code: "HSP",
+      status: "open" as const,
+      leadId: "stf-abena",
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "sch-prv",
+      name: "Provident Reserve",
+      code: "PRV",
+      status: "open" as const,
+      leadId,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "sch-t3s",
+      name: "Tier Three Savings",
+      code: "T3S",
+      status: "open" as const,
+      leadId,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "sch-wlp",
+      name: "Welfare Pension",
+      code: "WLP",
+      status: "closed" as const,
+      leadId: "stf-abena",
+      createdAt: now,
+      updatedAt: now,
+    },
+  ];
+  const harbourMembership = {
+    id: "memship-ama-hsp",
+    memberId: "mem-ama",
+    schemeId: "sch-hsp",
+    membershipNumber: "HSP-20410",
+    status: "active" as const,
+    effectiveFrom: "2022-04-01",
+    effectiveTo: null,
+    companyId: "co-harbour",
+    relationshipManagerId: "stf-darko",
+    monthlyContribution: 350,
+    retirementAge: 60,
+    targetPot: 180000,
+  };
+  const reserveMembership = {
+    id: "memship-nana-prv",
+    memberId: "mem-nana",
+    schemeId: "sch-prv",
+    membershipNumber: "PRV-30018",
+    status: "active" as const,
+    effectiveFrom: "2025-01-06",
+    effectiveTo: null,
+    companyId: null,
+    relationshipManagerId: "stf-esi",
+    monthlyContribution: 200,
+    retirementAge: 60,
+    targetPot: 90000,
+  };
+  return {
+    ...book,
+    staff: [
+      ...book.staff,
+      {
+        id: leadId,
+        name: "Adwoa Frimpong",
+        email: "adwoa.frimpong@upt.com.gh",
+        roles: ["team_lead"],
+        active: true,
+        leadId: null,
+      },
+      {
+        id: "stf-esi",
+        name: "Esi Boateng",
+        email: "esi.boateng@upt.com.gh",
+        roles: ["relationship_manager"],
+        active: true,
+        leadId,
+      },
+    ],
+    schemes,
+    schemeAssignments: [
+      ...book.schemeAssignments,
+      {
+        id: "sra-darko-hsp",
+        schemeId: "sch-hsp",
+        relationshipManagerId: "stf-darko",
+        assignedAt: now,
+        assignedBy: "stf-abena",
+      },
+      {
+        id: "sra-esi-prv",
+        schemeId: "sch-prv",
+        relationshipManagerId: "stf-esi",
+        assignedAt: now,
+        assignedBy: leadId,
+      },
+      {
+        id: "sra-kojo-mop",
+        schemeId: "sch-mop",
+        relationshipManagerId: "stf-kojo",
+        assignedAt: now,
+        assignedBy: "stf-abena",
+      },
+    ],
+    companies: [
+      {
+        id: "co-harbour",
+        name: "Harbour Co Ltd",
+        reference: "HCO",
+        status: "active",
+      },
+    ],
+    companySchemes: [
+      {
+        id: "csa-harbour-hsp",
+        companyId: "co-harbour",
+        schemeId: "sch-hsp",
+        effectiveFrom: "2022-04-01",
+        effectiveTo: null,
+        status: "active",
+      },
+    ],
+    employments: [
+      {
+        id: "emp-ama",
+        memberId: "mem-ama",
+        companyId: "co-harbour",
+        effectiveFrom: "2022-04-01",
+        effectiveTo: null,
+      },
+    ],
+    memberships: [
+      ...book.memberships.map((membership) =>
+        membership.id === "memship-mem-yaw"
+          ? { ...membership, relationshipManagerId: "stf-kojo" }
+          : membership,
+      ),
+      harbourMembership,
+      reserveMembership,
+    ],
+    unitPrices: [
+      ...book.unitPrices,
+      {
+        id: "px-hsp",
+        schemeId: "sch-hsp",
+        date: "2026-08-03",
+        price: 2.15,
+        setBy: "stf-efua",
+        setAt: "2026-08-03T08:00:00.000Z",
+      },
+      {
+        id: "px-prv",
+        schemeId: "sch-prv",
+        date: "2026-08-03",
+        price: 1.04,
+        setBy: "stf-efua",
+        setAt: "2026-08-03T08:00:00.000Z",
+      },
+    ],
+    contributions: [
+      ...book.contributions,
+      {
+        ...contribution("con-ama-hsp", "mem-ama", "2026-09-02", 350, 2.15),
+        membershipId: harbourMembership.id,
       },
     ],
   };

@@ -13,9 +13,9 @@ import { daysSince, formatDate } from "@/lib/format";
 
 export function ApprovalsBoard() {
   const records = useRecords();
-  const visible = new Set(records.members.map((member) => member.id));
+  const visible = new Set(records.memberships.map((membership) => membership.id));
   const rows = records.book.withdrawals.filter((row) => {
-    if (!visible.has(row.memberId)) return false;
+    if (!visible.has(row.membershipId)) return false;
     if (row.status === "paid" || row.status === "declined") return false;
     const reviewable =
       records.canReview &&
@@ -66,7 +66,11 @@ export function ApprovalsBoard() {
                     <span className="font-medium text-navy">
                       {member ? memberName(member) : row.name}
                     </span>
-                    <span className="block text-xs text-muted">{member?.memberNumber}</span>
+                    <span className="block text-xs text-muted">
+                      {records.book.schemes.find((scheme) => scheme.id === records.book.memberships.find((item) => item.id === row.membershipId)?.schemeId)?.name}
+                      {" · "}
+                      {records.book.memberships.find((item) => item.id === row.membershipId)?.membershipNumber}
+                    </span>
                   </span>
                 ),
                 submitted: formatDate(row.submittedAt),
